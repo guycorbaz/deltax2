@@ -1,0 +1,16 @@
+# Rust
+/target
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Slint
+# (Mostly handled by /target, but in case of manual generation)
+generated/

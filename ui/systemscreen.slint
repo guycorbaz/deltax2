@@ -1,0 +1,47 @@
+// System Configuration Screen
+// Provides access to low-level settings such as serial port configuration 
+// and diagnostic tools.
+
+import { Button, VerticalBox } from "std-widgets.slint";
+
+export component SystemScreen inherits Rectangle {
+    background: #e19292; // Distinctive background for configuration mode
+
+    // Callbacks to communicate with the application state machine/backend.
+    callback ok-clicked();       // Return to home screen
+    callback list-com-clicked(); // Diagnostic: List detected COM ports in console
+
+    // Title label
+    Text {
+        text: @tr("System screen");
+        y: 20px;
+        font-size: 20px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        width: parent.width;
+    }
+
+    // Diagnostic tool: Scans for connected hardware
+    Button {
+        x: (parent.width - self.width) / 2;
+        y: 117px;
+        width: 160px;
+        height: 60px;
+        text: @tr("List com");
+        clicked => {
+            root.list-com-clicked()
+        }
+    }
+
+    // Navigation Footer
+    Button {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 15px;
+        width: 160px;
+        height: 60px;
+        text: @tr("Ok");
+        clicked => {
+            root.ok-clicked()
+        }
+    }
+}

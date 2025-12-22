@@ -1,0 +1,50 @@
+# DeltaX2 Configuration File
+
+# [serial] section defines the connection parameters for the robot hardware.
+[serial]
+# The path to the serial port (e.g., "/dev/ttyUSB0" on Linux or "COM3" on Windows).
+port = "/dev/ttys001"
+# The communication speed in bits per second. Must match robot firmware settings.
+baud_rate = 115200
+
+# [ui] section defines the user interface behavior.
+[ui]
+# Set to true to hide window decorations and frame (useful for RPi touchscreens).
+kiosk_mode = false
+
+# [robot] section defines safety boundaries and motion constraints.
+[robot]
+# Minimum allowed coordinates in mm. The robot will refuse to move beyond these.
+# Z0 is usually the top (homed) position, so Z should typically be negative.
+limit_min = { x = -160.0, y = -160.0, z = -200.0 }
+# Maximum allowed coordinates in mm.
+limit_max = { x = 160.0, y = 160.0, z = 0.0 }
+
+# [[plates]] array defines the different seeding trays available for selection in the UI.
+# You can add as many as needed by repeating the [[plates]] block.
+
+[[plates]]
+# Display name in the UI selection screen.
+name = "77pots"
+# Physical dimensions of the plate in mm.
+plate_size = { x = 500, y = 700, z = 40 }
+# Center coordinates of the first pot (origin pot) in mm.
+first_pot = { x = 7, y = 24 }
+# Distance between pot centers in X and Y directions.
+pot_distance = { x = 10, y = 12 }
+# Grid dimensions: number of pots in X and Y directions.
+nb_pot = { x = 7, y = 11 }
+
+[[plates]]
+name = "15pots"
+plate_size = { x = 500, y = 700, z = 40 }
+first_pot = { x = 7, y = 24 }
+pot_distance = { x = 10, y = 12 }
+nb_pot = { x = 3, y = 5 }
+
+[[plates]]
+name = "24pots"
+plate_size = { x = 500, y = 700, z = 40 }
+first_pot = { x = 7, y = 24 }
+pot_distance = { x = 10, y = 12 }
+nb_pot = { x = 4, y = 6 }

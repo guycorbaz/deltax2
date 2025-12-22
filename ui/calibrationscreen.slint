@@ -1,0 +1,325 @@
+// Calibration Screen
+// This screen allows the user to manually control the robot's movement (jogging)
+// and perform homing operations for all axes.
+
+import { Button } from "std-widgets.slint";
+
+export component CalibrationScreen inherits Rectangle {
+    background: #c2c2c2;
+
+    // Head position properties received from the backend (for display only).
+    in-out property <string> head-x: "0.000";
+    in-out property <string> head-y: "0.000";
+    in-out property <string> head-z: "0.000";
+    in-out property <string> head-cart: "0.000";
+    
+    // The amount the robot moves on each button click.
+    in-out property <float> step-size: 0.01;
+
+    // Callbacks to notify the Rust backend of user interactions.
+    callback ok-clicked();
+    callback move-x(float);
+    callback move-y(float);
+    callback move-z(float);
+    callback move-cart(float);
+    callback home-xyz();
+    callback home-cart();
+
+    // --- Position Readout Section (Top Right) ---
+    Rectangle {
+        x: 421px;
+        y: 10px;
+        width: 349px;
+        height: 75px;
+        Text {
+            text: @tr("Position");
+            y: 0px;
+            width: parent.width;
+            font-size: 14px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        Rectangle {
+            y: 20px;
+            width: parent.width;
+            height: 50px;
+            background: root.background;
+            border-color: #929292;
+            border-width: 1px;
+            border-radius: 5px;
+            Text {
+                text: "X: " + root.head-x + "  Y: " + root.head-y + "  Z: " + root.head-z + "  Cart: " + root.head-cart;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                font-weight: 700;
+            }
+        }
+    }
+
+    // --- Step Size Selection Section (Above XY Controls) ---
+    Rectangle {
+        x: 80px;
+        y: 10px;
+        width: 280px;
+        height: 100px;
+        Text {
+            text: @tr("Step (mm)");
+            y: 0px;
+            width: parent.width;
+            font-size: 14px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        Rectangle {
+            y: 30px;
+            width: parent.width;
+            height: 60px;
+            background: root.background;
+            border-color: #929292;
+            border-width: 1px;
+            border-radius: 5px;
+            
+            // Manual layout of step buttons to ensure visibility
+            Button {
+                x: 5px;
+                y: 5px;
+                width: 62px;
+                height: 50px;
+                text: "0.01";
+                clicked => {
+                    root.step-size = 0.01
+                }
+            }
+
+            Button {
+                x: 72px;
+                y: 5px;
+                width: 62px;
+                height: 50px;
+                text: "0.1";
+                clicked => {
+                    root.step-size = 0.1
+                }
+            }
+
+            Button {
+                x: 139px;
+                y: 5px;
+                width: 62px;
+                height: 50px;
+                text: "1";
+                clicked => {
+                    root.step-size = 1.0
+                }
+            }
+
+            Button {
+                x: 206px;
+                y: 5px;
+                width: 62px;
+                height: 50px;
+                text: "5";
+                clicked => {
+                    root.step-size = 5.0
+                }
+            }
+        }
+    }
+
+    // --- XY Controller Section ---
+    Text {
+        x: 80px + (280px - self.width) / 2;
+        y: 125px;
+        text: "Y";
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    Text {
+        x: 80px - self.width - 10px;
+        y: 150px + (240px - self.height) / 2;
+        text: "X";
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    Rectangle {
+        x: 80px;
+        y: 150px;
+        width: 280px;
+        height: 240px;
+        border-color: #929292;
+        border-width: 1px;
+        border-radius: 5px;
+        Button {
+            x: (parent.width - self.width) / 2;
+            y: 10px;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/arrow-up.svg");
+            clicked => {
+                root.move-y(root.step-size)
+            }
+        }
+
+        Button {
+            x: 10px;
+            y: (parent.height - self.height) / 2;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/arrow-left.svg");
+            clicked => {
+                root.move-x(-root.step-size)
+            }
+        }
+
+        Button {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/home.svg");
+            clicked => {
+                root.home-xyz()
+            }
+        }
+
+        Button {
+            x: parent.width - self.width - 10px;
+            y: (parent.height - self.height) / 2;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/arrow-right.svg");
+            clicked => {
+                root.move-x(root.step-size)
+            }
+        }
+
+        Button {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 10px;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/arrow-down.svg");
+            clicked => {
+                root.move-y(-root.step-size)
+            }
+        }
+    }
+
+    // --- Z Axis Controller Section ---
+    Text {
+        x: 437px + (110px - self.width) / 2;
+        y: 125px;
+        text: "Z";
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    Rectangle {
+        x: 437px;
+        y: 150px;
+        width: 110px;
+        height: 240px;
+        border-color: #929292;
+        border-width: 1px;
+        border-radius: 5px;
+        Button {
+            x: (parent.width - self.width) / 2;
+            y: 10px;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/arrow-up.svg");
+            clicked => {
+                root.move-z(root.step-size)
+            }
+        }
+
+        Button {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/home.svg");
+            clicked => {
+                root.home-xyz()
+            }
+        }
+
+        Button {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 10px;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/arrow-down.svg");
+            clicked => {
+                root.move-z(-root.step-size)
+            }
+        }
+    }
+
+    // --- Rotation / Carriage Controller Section ---
+    Text {
+        x: 610px + (110px - self.width) / 2;
+        y: 125px;
+        text: "Cart";
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    Rectangle {
+        x: 610px;
+        y: 150px;
+        width: 110px;
+        height: 240px;
+        border-color: #929292;
+        border-width: 1px;
+        border-radius: 5px;
+        Button {
+            x: (parent.width - self.width) / 2;
+            y: 10px;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/arrow-up.svg");
+            clicked => {
+                root.move-cart(root.step-size)
+            }
+        }
+
+        Button {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/home.svg");
+            clicked => {
+                root.home-cart()
+            }
+        }
+
+        Button {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 10px;
+            width: 65px;
+            height: 65px;
+            icon: @image-url("assets/icons/arrow-down.svg");
+            clicked => {
+                root.move-cart(-root.step-size)
+            }
+        }
+    }
+
+    // --- Navigation Footer ---
+    Button {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 15px;
+        width: 160px;
+        height: 60px;
+        text: @tr("Ok");
+        clicked => {
+            root.ok-clicked()
+        }
+    }
+}

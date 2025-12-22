@@ -1,0 +1,58 @@
+// Confirm Seed Screen
+// Step 2 of the seeding flow: Asks the user to load seeds into the hopper/robot
+// before starting the automated process.
+
+import { Button, HorizontalBox } from "std-widgets.slint";
+
+export component ConfirmSeed inherits Rectangle {
+    background: #c2c2c2;
+
+    // Callbacks for navigation.
+    callback cancel-clicked(); // Return to home screen
+    callback ok-clicked();     // Final confirmation, start seeding process
+
+    // Instruction Title
+    Text {
+        text: @tr("Load the seeds");
+        y: 30px;
+        font-size: 20px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        width: parent.width;
+    }
+
+    // Reference image of seeds
+    Image {
+        width: 250px;
+        x: parent.width - self.width - 20px;
+        y: (parent.height - self.height) / 2;
+        source: @image-url("assets/images/graines.png");
+    }
+
+    // --- Action Buttons ---
+    HorizontalBox {
+        y: parent.height - self.height - 15px; // Standardized bottom gap
+        width: 350px;
+        x: (parent.width - self.width) / 2;
+        spacing: 30px;
+
+        Button {
+            width: 160px;
+            height: 60px;
+            text: @tr("Cancel");
+            icon: @image-url("assets/icons/close.svg");
+            clicked => {
+                root.cancel-clicked()
+            }
+        }
+
+        Button {
+            width: 160px;
+            height: 60px;
+            text: @tr("Ok");
+            clicked => {
+                root.ok-clicked()
+            }
+        }
+    }
+}

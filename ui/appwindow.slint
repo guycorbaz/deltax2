@@ -1,0 +1,184 @@
+// Main entry point for the DeltaX2 UI.
+// This file defines the AppWindow which acts as the main container and navigator 
+// for all screens in the application.
+
+import { MainScreen } from "mainscreen.slint";
+import { CalibrationScreen } from "calibrationscreen.slint";
+import { SystemScreen } from "systemscreen.slint";
+import { ConfirmPlate } from "confirmplate.slint";
+import { ConfirmSeed } from "confirmseed.slint";
+import { SeedingScreen } from "seedingscreen.slint";
+
+// Defines the possible navigation states of the application.
+export enum ScreenState {
+    Main,           // Initial home screen
+    Calibration,    // Manual jog and homing screen
+    Configuration,  // Serial port and system settings
+    ConfirmPlate,   // Step 1 of seeding: Select plate type
+    ConfirmSeed,    // Step 2 of seeding: Final confirmation
+    Seeding         // Active seeding process display
+}
+
+// Global window component. It handles screen switching and bridges Rust callbacks to UI components.
+export component AppWindow inherits Window {
+    title: "DeltaX2";
+    width: 800px;   // Native resolution for 7'' RPi touch screen
+    height: 480px;  // Native resolution for 7'' RPi touch screen
+    background: #c2c2c2;
+    
+    // Kiosk mode for Raspberry Pi touchscreens.
+    // When true, no-frame hides the OS title bar and borders.
+    in-out property <bool> kiosk-mode: false;
+    no-frame: root.kiosk-mode;
+
+    // Tracks the currently displayed screen.
+    in-out property <ScreenState> current-screen: ScreenState.Main;
+
+    // Status properties displayed in the header/footer of all screens.
+    in-out property <string> status-text: @tr("Initializing...");
+    in-out property <bool> is-connected: false;
+
+    // Real-time robot head position (tracked by the backend).
+    in-out property <string> head-x: "0.000";
+    in-out property <string> head-y: "0.000";
+    in-out property <string> head-z: "0.000";
+    in-out property <string> head-cart: "0.000";
+
+    // Callbacks to be handled by the Rust backend.
+    callback move-x(float);       // Relative move on X axis
+    callback move-y(float);       // Relative move on Y axis
+    callback move-z(float);       // Relative move on Z axis
+    callback move-cart(float);    // Relative move on rotation axis
+    callback home-xyz();          // Trigger G28 auto-homing
+    callback home-cart();         // Reset carriage position
+    callback list-com-ports();     // Triggers serial port enumeration log
+    in property <[string]> plate-names; // List of plate names from config.toml
+    callback plate-selected(int);  // User selected a plate index
+
+    VerticalLayout {
+        // Content Area: Dynamically switches between sub-screens based on current-screen state.
+        Rectangle {
+            // Home Screen logic
+            if (root.current-screen == ScreenState.Main): MainScreen {
+                seed-clicked => {
+                    root.current-screen = ScreenState.ConfirmPlate
+                }
+                calibration-clicked => {
+                    root.current-screen = ScreenState.Calibration
+                }
+                configuration-clicked => {
+                    root.current-screen = ScreenState.Configuration
+                }
+            }
+
+            // Calibration & Manual Jog Screen logic
+            if (root.current-screen == ScreenState.Calibration): CalibrationScreen {
+                head-x: root.head-x;
+                head-y: root.head-y;
+                head-z: root.head-z;
+                head-cart: root.head-cart;
+                ok-clicked => {
+                    root.current-screen = ScreenState.Main
+                }
+                move-x(v) => {
+                    root.move-x(v)
+                }
+                move-y(v) => {
+                    root.move-y(v)
+                }
+                move-z(v) => {
+                    root.move-z(v)
+                }
+                move-cart(v) => {
+                    root.move-cart(v)
+                }
+                home-xyz => {
+                    root.home-xyz()
+                }
+                home-cart => {
+                    root.home-cart()
+                }
+            }
+
+            // System Configuration Screen logic
+            if (root.current-screen == ScreenState.Configuration): SystemScreen {
+                ok-clicked => {
+                    root.current-screen = ScreenState.Main
+                }
+                list-com-clicked => {
+                    root.list-com-ports()
+                }
+            }
+
+            // Seeding Flow: Plate selection
+            if (root.current-screen == ScreenState.ConfirmPlate): ConfirmPlate {
+                plate-names: root.plate-names;
+                cancel-clicked => {
+                    root.current-screen = ScreenState.Main
+                }
+                plate-selected(id) => {
+                    root.plate-selected(id);
+                    root.current-screen = ScreenState.ConfirmSeed;
+                }
+            }
+
+            // Seeding Flow: Confirmation
+            if (root.current-screen == ScreenState.ConfirmSeed): ConfirmSeed {
+                cancel-clicked => {
+                    root.current-screen = ScreenState.Main
+                }
+                ok-clicked => {
+                    root.current-screen = ScreenState.Seeding
+                }
+            }
+
+            // Seeding Flow: Active Process
+            if (root.current-screen == ScreenState.Seeding): SeedingScreen {
+                stop-clicked => {
+                    root.current-screen = ScreenState.Main
+                }
+            }
+        }
+
+        // Global Status Bar at the bottom of the window.
+        Rectangle {
+            height: 40px;
+            background: #333;
+            HorizontalLayout {
+                padding: 10px;
+                spacing: 10px;
+                alignment: start;
+                
+                // Visual connection status LED
+                Rectangle {
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 6px;
+                    background: root.is-connected ? #4CAF50 : #F44336;
+                    y: (parent.height - self.height) / 2;
+                }
+                
+                // Connection text label
+                Text {
+                    text: root.is-connected ? @tr("Connected") : @tr("Disconnected");
+                    color: white;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 20px;
+                } // Spacer
+                
+                // Detailed status message (e.g., "Ready", "Error: ...", "Seeding complete")
+                Text {
+                    text: root.status-text;
+                    color: #aaa;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}

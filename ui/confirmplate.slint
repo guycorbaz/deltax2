@@ -1,0 +1,70 @@
+// Confirm Plate Screen
+// Step 1 of the seeding flow: Asks the user to physically install a seeding plate
+// and select the corresponding layout from a list.
+
+import { Button, GridBox, VerticalBox } from "std-widgets.slint";
+
+export component ConfirmPlate inherits Rectangle {
+    background: #c2c2c2;
+
+    // List of available plate names, populated from the configuration in the backend.
+    in property <[string]> plate-names;
+    
+    // Callbacks to notify the Rust backend.
+    callback cancel-clicked();      // Return to home screen
+    callback plate-selected(int);   // Confirm selected plate index and proceed
+
+    // Title instruction
+    Text {
+        text: @tr("Install the seeding plate");
+        y: 30px;
+        font-size: 20px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        width: parent.width;
+    }
+
+    // Visual reference for the user (sample image of paper pots)
+    Image {
+        x: 460px;
+        y: (parent.height - self.height) / 2;
+        width: 300px;
+        source: @image-url("assets/images/paperpot.jpg");
+    }
+
+    // Plate selection list
+    Rectangle {
+        x: 41px;
+        width: 344px;
+        height: 300px;
+        y: (parent.height - self.height) / 2;
+        
+        // Dynamically creates a button for each plate defined in config.toml
+        VerticalLayout {
+            spacing: 12px;
+            alignment: center;
+            for name[i] in root.plate-names: Button {
+                text: name;
+                width: 160px;
+                height: 60px;
+                icon: @image-url("assets/icons/keypad.svg");
+                clicked => {
+                    root.plate-selected(i)
+                }
+            }
+        }
+    }
+
+    // Navigation Footer
+    Button {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 15px;
+        width: 160px;
+        height: 60px;
+        text: @tr("Cancel");
+        icon: @image-url("assets/icons/close.svg");
+        clicked => {
+            root.cancel-clicked()
+        }
+    }
+}

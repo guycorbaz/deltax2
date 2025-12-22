@@ -1,0 +1,62 @@
+// Seeding Screen
+// Displayed during the active automated seeding process.
+// It provides controls to pause, continue, or emergency stop the operation.
+
+import { Button, HorizontalBox } from "std-widgets.slint";
+
+export component SeedingScreen inherits Rectangle {
+    background: #c2c2c2;
+
+    // Callbacks to control the automated process.
+    callback stop-clicked();      // Terminate process and return home
+    callback pause-clicked();     // Suspend current movement
+    callback continue-clicked();  // Resume suspended process
+
+    // Status Title
+    Text {
+        text: @tr("Seeding in progress");
+        y: 30px;
+        font-size: 20px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        width: parent.width;
+    }
+
+    // --- Control Buttons ---
+    HorizontalBox {
+        y: parent.height - self.height - 15px; // Standardized bottom gap
+        width: 300px;
+        x: (parent.width - self.width) / 2;
+        spacing: 30px;
+
+        // Stop Button
+        Button {
+            width: 70px;
+            height: 60px;
+            icon: @image-url("assets/icons/square.svg");
+            clicked => {
+                root.stop-clicked()
+            }
+        }
+
+        // Pause Button
+        Button {
+            width: 70px;
+            height: 60px;
+            icon: @image-url("assets/icons/pause-circle.svg");
+            clicked => {
+                root.pause-clicked()
+            }
+        }
+
+        // Play / Continue Button
+        Button {
+            width: 70px;
+            height: 60px;
+            icon: @image-url("assets/icons/play-circle.svg");
+            clicked => {
+                root.continue-clicked()
+            }
+        }
+    }
+}

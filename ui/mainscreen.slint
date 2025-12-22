@@ -1,0 +1,61 @@
+// Main Screen
+// The initial home screen of the application. Provides quick access to seeding,
+// calibration, and configuration modes.
+
+import { Button, VerticalBox } from "std-widgets.slint";
+
+export component MainScreen inherits Rectangle {
+    background: #c2c2c2;
+
+    // Navigation callbacks to be handled by the AppWindow state machine.
+    callback seed-clicked();           // Navigate to Seeding Flow
+    callback calibration-clicked();    // Navigate to Calibration Screen
+    callback configuration-clicked();  // Navigate to System Configuration
+
+    // --- Sidebar Menu ---
+    VerticalBox {
+        alignment: center;
+        width: 160px;
+        x: 70px;
+        spacing: 15px;
+
+        Button {
+            width: 160px;
+            height: 60px;
+            text: @tr("Seeding");
+            icon: @image-url("assets/icons/funnel.svg");
+            clicked => {
+                root.seed-clicked()
+            }
+        }
+
+        Button {
+            width: 160px;
+            height: 60px;
+            text: @tr("Calibration");
+            icon: @image-url("assets/icons/move.svg");
+            clicked => {
+                root.calibration-clicked()
+            }
+        }
+
+        Button {
+            width: 160px;
+            height: 60px;
+            text: @tr("Configuration");
+            icon: @image-url("assets/icons/settings-2.svg");
+            clicked => {
+                root.configuration-clicked()
+            }
+        }
+    }
+
+    // --- Hero Image ---
+    // Displays a rendered image of the Delta X 2 robot.
+    Image {
+        x: 442px;
+        y: (parent.height - self.height) / 2 - 12px;
+        width: 320px;
+        source: @image-url("assets/images/deltax2.png");
+    }
+}

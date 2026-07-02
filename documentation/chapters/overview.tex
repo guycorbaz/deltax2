@@ -1,0 +1,181 @@
+% ============================================================================
+\chapter{System overview}
+\label{ch:overview}
+% ============================================================================
+
+\section{Hardware components}
+\label{sec:system-schema}
+
+The system consists of four hardware elements connected in a chain: the operator's
+touch screen, the Raspberry~Pi running this application, the Delta~X~2 controller
+board, and the mechanics it drives.
+
+\begin{center}
+\begin{tikzpicture}[
+  font=\sffamily\small,
+  node distance=1.3cm,
+  sw/.style={rectangle, rounded corners=2pt, draw=accent, fill=accentlight, thick,
+             minimum height=1.5cm, text width=2.7cm, align=center},
+  hw/.style={rectangle, rounded corners=2pt, draw=black!45, fill=codegray, thick,
+             minimum height=1.5cm, text width=2.7cm, align=center},
+  link/.style={{Stealth}-{Stealth}, thick},
+]
+  \node[hw]                    (screen) {7\,'' touch screen\\[1pt] {\scriptsize 800$\times$480}};
+  \node[sw, right=of screen]   (pi)     {Raspberry Pi 5\\[1pt] {\scriptsize \appname{} app}};
+  \node[hw, right=of pi]       (ctrl)   {Delta X 2\\ controller};
+  \node[hw, right=of ctrl]     (arm)    {delta arms,\\ end effector};
+  \draw[link] (screen) -- node[above]{\scriptsize display}
+                          node[below]{\scriptsize touch} (pi);
+  \draw[link] (pi)     -- node[above]{\scriptsize USB serial}
+                          node[below]{\scriptsize G-code} (ctrl);
+  \draw[link] (ctrl)   -- node[above]{\scriptsize motor}
+                          node[below]{\scriptsize drivers} (arm);
+\end{tikzpicture}
+\end{center}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+  \toprule
+  \textbf{Component} & \textbf{Role} \\
+  \midrule
+  Delta~X~2 robot & Delta-arm manipulator performing the seeding motion.
+    Controlled over a USB serial link (G-code, 115\,200~baud,
+    Appendix~\ref{app:gcode}). \\
+  Raspberry~Pi~5 & Runs the \appname{} application (Chapter~\ref{ch:rpi}). \\
+  7\,'' touch screen & Operator interface, 800\,$\times$\,480 pixels, touch only. \\
+  Seeding plates & Interchangeable paper-pot trays; their geometry is described in
+    \code{config.toml} (Section~\ref{sec:plates}). \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Software architecture}
+\label{sec:architecture}
+
+The application consists of two threads:
+
+\begin{itemize}[itemsep=2pt]
+  \item The \textbf{UI thread} runs the Slint event loop and reacts to touch input.
+        It never talks to the serial port directly, so the interface stays responsive
+        at all times.
+  \item The \textbf{robot worker thread} owns the serial connection. It executes one
+        command at a time (connect, jog, home, seed a plate) and reports status,
+        position and progress back to the UI.
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[
+  font=\sffamily\small,
+  comp/.style={rectangle, rounded corners=2pt, draw=accent!75, fill=white, thick,
+               align=center, minimum height=0.95cm, text width=3.6cm},
+  thread/.style={rectangle, rounded corners=3pt, draw=accent, thick, fill=accentlight,
+                 inner sep=10pt},
+  shared/.style={rectangle, rounded corners=2pt, draw=warncol, fill=warnlight, thick,
+                 align=center, minimum height=0.95cm, text width=3.6cm},
+  hw/.style={rectangle, rounded corners=2pt, draw=black!45, fill=codegray, thick,
+             align=center, minimum height=0.95cm, text width=3.6cm},
+  flow/.style={-{Stealth}, thick},
+  bi/.style={{Stealth}-{Stealth}, thick},
+]
+  % --- Components ---
+  \node[comp]                       (loop)    {Slint event loop};
+  \node[comp, below=0.45cm of loop] (screens) {screens \& callbacks};
+  \node[comp, right=4.9cm of loop]     (robot)  {\code{DeltaRobot}\\[-1pt]
+        {\scriptsize G-code, safety limits, position}};
+  \node[comp, below=0.45cm of robot]   (serial) {\code{SerialCommunication}};
+
+  % --- Thread boxes (drawn behind the components) ---
+  \begin{scope}[on background layer]
+    \node[thread, fit=(loop)(screens),
+          label={[accent, font=\sffamily\bfseries]above:UI thread}] (uibox) {};
+    \node[thread, fit=(robot)(serial),
+          label={[accent, font=\sffamily\bfseries]above:robot worker thread}] (wbox) {};
+  \end{scope}
+
+  % --- Command / feedback channels ---
+  \draw[flow] ([yshift=10pt]uibox.east) -- node[above]{\scriptsize mpsc channel:
+        \code{RobotCommand}} ([yshift=10pt]wbox.west);
+  \draw[flow] ([yshift=-10pt]wbox.west) -- node[below]{\scriptsize status, position,
+        progress} ([yshift=-10pt]uibox.east);
+
+  % --- Shared seeding control flags ---
+  \node[shared] (flags) at ($(uibox.south)!0.5!(wbox.south) + (0,-1.5)$)
+        {\code{SeedingControl}\\[-1pt] {\scriptsize atomic \code{abort} / \code{pause} flags}};
+  \draw[flow] (uibox.south) |- node[pos=0.75, above]{\scriptsize written by
+        \textbf{Stop}/\textbf{Pause}} (flags.west);
+  \draw[flow] (flags.east) -| node[pos=0.25, above]{\scriptsize read between pots}
+        (wbox.south);
+
+  % --- Hardware ---
+  \node[hw, below=1.5cm of wbox] (fw) {Delta X 2 firmware};
+  \draw[bi] (wbox.east) -- ++(0.5,0) |- node[pos=0.25, right]{\scriptsize USB serial}
+        (fw.east);
+\end{tikzpicture}
+\end{center}
+
+Commands travel from the UI to the worker through a queue and are executed strictly
+one at a time. The pause/abort flags take a separate path on purpose: during a
+seeding job, the worker is busy inside the job loop and would not look at its queue,
+so the \textbf{Stop} and \textbf{Pause} buttons write shared flags that the loop
+checks between pots. The robot therefore finishes the pot it is currently working on
+and then stops or waits.
+
+\section{Screen map}
+\label{sec:screenmap}
+
+\begin{center}
+\begin{tikzpicture}[
+  font=\sffamily\small,
+  scr/.style={rectangle, rounded corners=2pt, draw=accent, fill=accentlight, thick,
+              minimum height=0.9cm, text width=2.3cm, align=center},
+  nav/.style={-{Stealth}, thick},
+  back/.style={-{Stealth}, thick, dashed, black!55},
+]
+  \node[scr]                                  (main)   {\textbf{Main}};
+  \node[scr, above=0.9cm of main]             (calib)  {Calibration};
+  \node[scr, below=0.9cm of main]             (system) {System};
+  \node[scr, right=1.55cm of main]            (plate)  {Confirm plate};
+  \node[scr, right=1.55cm of plate]           (seed)   {Confirm seed};
+  \node[scr, right=1.55cm of seed]            (run)    {Seeding};
+
+  \draw[nav]  ([xshift=-8pt]main.north)  -- node[left]{\scriptsize Calibration}
+              ([xshift=-8pt]calib.south);
+  \draw[back] ([xshift=8pt]calib.south)  -- node[right]{\scriptsize Ok}
+              ([xshift=8pt]main.north);
+  \draw[nav]  ([xshift=-8pt]main.south)  -- node[left]{\scriptsize Configuration}
+              ([xshift=-8pt]system.north);
+  \draw[back] ([xshift=8pt]system.north) -- node[right]{\scriptsize Ok}
+              ([xshift=8pt]main.south);
+
+  \draw[nav] (main)  -- node[above]{\scriptsize Seeding}       (plate);
+  \draw[nav] (plate) -- node[above]{\scriptsize plate}
+                        node[below]{\scriptsize chosen}        (seed);
+  \draw[nav] (seed)  -- node[above]{\scriptsize Ok}
+                        node[below]{\scriptsize (job starts)}  (run);
+
+  \draw[back] (plate.south) to[bend left=18]
+              node[pos=0.6, below]{\scriptsize Cancel} (main.south east);
+  \draw[back] (seed.south) to[bend left=30]
+              node[pos=0.2, below]{\scriptsize Cancel} (main.south east);
+  \draw[back] (run.north) to[bend right=20]
+              node[above]{\scriptsize Stop / complete / error} (main.north east);
+\end{tikzpicture}
+\end{center}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+  \toprule
+  \textbf{Screen} & \textbf{Purpose} \\
+  \midrule
+  \textbf{Main} & Home screen; entry to the three functions below. \\
+  \textbf{Seeding flow} & Three steps: select the plate type, confirm seeds are
+    loaded, then watch/control the running job. \\
+  \textbf{Calibration} & Manual jogging, step-size selection, homing, position readout. \\
+  \textbf{System} & System utilities (serial-port diagnostics). \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+A status bar is visible at the bottom of every screen. It shows a
+\textcolor{accent}{$\bullet$}~green\,/\,\textcolor{warncol}{$\bullet$}~red connection
+indicator and the most recent status or error message.

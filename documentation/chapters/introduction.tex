@@ -1,0 +1,52 @@
+% ============================================================================
+\chapter{Introduction}
+% ============================================================================
+
+The \appname{} control application drives a \textbf{Delta~X~2} delta-arm robot used
+for automated seeding of paper-pot trays. It is written in Rust with the Slint UI
+toolkit and is designed for a dedicated operator terminal: a Raspberry~Pi~5 with a
+7\,'' touch screen running in kiosk mode.
+
+The application provides:
+
+\begin{itemize}[itemsep=2pt]
+  \item a guided, touch-friendly \textbf{seeding workflow} (select tray, load seeds,
+        run, pause/resume, stop);
+  \item a \textbf{calibration screen} for manual jogging of the X, Y and Z axes with
+        selectable step sizes and mechanical homing;
+  \item \textbf{software safety limits}: every movement is checked against configurable
+        boundaries before any command is sent to the robot;
+  \item live \textbf{position readout} and a permanent \textbf{status bar} with a
+        connection indicator;
+  \item plain-text configuration through a single \code{config.toml} file --- new tray
+        layouts can be added without recompiling.
+\end{itemize}
+
+\section{Intended audience and structure}
+
+Chapters~\ref{ch:installation} to~\ref{ch:configuration} are aimed at the
+\emph{administrator} who installs and configures the system (keyboard and SSH access
+assumed): Chapter~\ref{ch:installation} covers building the software,
+Chapter~\ref{ch:rpi} its deployment on the Raspberry~Pi terminal, and
+Chapter~\ref{ch:configuration} the \code{config.toml} settings.
+Chapter~\ref{ch:usage} is aimed at the \emph{daily operator}, who interacts with the
+machine exclusively through the touch screen.
+Chapter~\ref{ch:troubleshooting} helps diagnose common problems.
+Appendix~\ref{app:gcode} contains the complete G-code and communication protocol
+specification of the Delta~X~2, and Appendix~\ref{app:limitations} lists current
+development limitations.
+
+\section{Typographic conventions}
+
+\begin{itemize}[itemsep=2pt]
+  \item \code{monospace} --- file names, commands, configuration keys, on-wire commands.
+  \item \textbf{Bold} --- names of buttons and screens as they appear on the display.
+  \item Shell commands prefixed with \code{\$} are typed in a terminal (locally or over SSH).
+\end{itemize}
+
+\begin{warning}
+The Delta~X~2 is a moving machine. Keep hands and tools out of the working area while
+the robot is powered. The software enforces motion limits, but software protections
+are no substitute for physical caution. An additional hardware emergency-stop button
+that cuts motor power is strongly recommended (see Appendix~\ref{app:limitations}).
+\end{warning}

@@ -1,0 +1,56 @@
+% ============================================================================
+\chapter{Installation}
+\label{ch:installation}
+% ============================================================================
+
+This chapter covers building the application from source and running it on a
+development machine. Deployment on the Raspberry~Pi operator terminal is the
+subject of Chapter~\ref{ch:rpi}.
+
+\section{Prerequisites}
+
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Rust toolchain} --- install via \url{https://rustup.rs}. The project
+        uses Rust edition 2024; any recent stable toolchain works.
+  \item \textbf{Build dependencies} --- a C compiler and the graphics/input
+        development libraries required by Slint. On Debian-based systems:
+\begin{lstlisting}[language=bash]
+$ sudo apt install build-essential cmake libfontconfig1-dev \
+      libfreetype6-dev libxkbcommon-dev libinput-dev \
+      libudev-dev libgbm-dev
+\end{lstlisting}
+  \item \textbf{Serial port access} --- the user running the application must be able
+        to open the robot's serial device:
+\begin{lstlisting}[language=bash]
+$ sudo usermod -aG dialout $USER    # log out and back in afterwards
+\end{lstlisting}
+\end{itemize}
+
+\section{Building from source}
+
+\begin{lstlisting}[language=bash]
+$ git clone <repository-url> deltax2
+$ cd deltax2
+$ cargo build --release
+\end{lstlisting}
+
+The binary is produced at \code{target/release/deltax2}.
+
+\begin{note}
+The application reads \code{config.toml} from its \emph{current working directory}
+at start-up, not from the directory containing the binary. Always start it from a
+directory that contains a valid \code{config.toml} (this matters for the systemd
+unit in Section~\ref{sec:systemd}, which sets \code{WorkingDirectory} explicitly).
+\end{note}
+
+\section{Desktop test run}
+
+For development on a normal Linux desktop, connect the robot (or leave it
+disconnected --- the UI starts regardless and shows \emph{Disconnected}), then:
+
+\begin{lstlisting}[language=bash]
+$ cargo run
+\end{lstlisting}
+
+Configure the serial port and tray layouts as described in
+Chapter~\ref{ch:configuration} before first use with real hardware.

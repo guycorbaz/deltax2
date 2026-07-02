@@ -1,0 +1,150 @@
+% ============================================================================
+\chapter{Configuration}
+\label{ch:configuration}
+% ============================================================================
+
+All settings live in a single file, \code{config.toml}, read once at start-up from
+the application's working directory. \textbf{Changes take effect after restarting the
+application} (\code{sudo systemctl restart deltax2} on a kiosk installation).
+
+If the file is missing or contains a syntax error, the application prints an error
+and exits; on a kiosk installation check \code{journalctl -u deltax2} for the reason.
+
+\section{Serial connection --- \code{[serial]}}
+
+\begin{lstlisting}[language=TOML]
+[serial]
+port = "/dev/ttyUSB0"   # robot serial device
+baud_rate = 115200      # must match the robot firmware
+\end{lstlisting}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}llX@{}}
+  \toprule
+  \textbf{Key} & \textbf{Type} & \textbf{Meaning} \\
+  \midrule
+  \code{port} & string & Serial device path. Typically \code{/dev/ttyUSB0} or
+    \code{/dev/ttyACM0} on Linux. Use the \textbf{List com} button
+    (Section~\ref{sec:systemscreen}) or \code{ls /dev/tty*} to find it. \\
+  \code{baud\_rate} & integer & Communication speed; the Delta~X~2 firmware uses
+    115\,200 (Appendix~\ref{app:gcode}). \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{tip}
+USB device names can change between reboots when several adapters are connected.
+For a robust kiosk setup, use a stable symlink from
+\code{/dev/serial/by-id/\dots} as the \code{port} value.
+\end{tip}
+
+\section{User interface --- \code{[ui]}}
+
+\begin{lstlisting}[language=TOML]
+[ui]
+kiosk_mode = false   # true: borderless full-screen for the Pi touch screen
+\end{lstlisting}
+
+\section{Safety limits --- \code{[robot]}}
+\label{sec:limits}
+
+\begin{lstlisting}[language=TOML]
+[robot]
+limit_min = { x = -160.0, y = -160.0, z = -200.0 }
+limit_max = { x =  160.0, y =  160.0, z =    0.0 }
+\end{lstlisting}
+
+Every jog and seeding movement is checked against these boundaries \emph{before} any
+command is sent to the hardware; a move that would leave the box is refused with the
+status message \emph{Movement out of safety limits}. The values must lie within the
+physical workspace of the robot, described in Section~\ref{sec:workspace}.
+
+\begin{warning}
+The coordinate origin is established by homing (\code{G28}): after homing, the head
+is at the \emph{top centre} of the working volume, at $X{=}0$, $Y{=}0$, $Z{=}0$.
+The Z axis points \emph{upwards}: all working positions below the home position have
+\textbf{negative Z}. Consequently \code{limit\_max.z} should normally stay at
+\code{0.0} and \code{limit\_min.z} defines the lowest permitted point.
+Set the limits to match your actual machine and tooling before first use.
+\end{warning}
+
+\section{Seeding plates --- \code{[[plates]]}}
+\label{sec:plates}
+
+Each \code{[[plates]]} block describes one tray layout and appears as a selectable
+button in the seeding workflow. Add as many blocks as you have tray types.
+
+\begin{lstlisting}[language=TOML]
+[[plates]]
+name = "77pots"                          # button label in the UI
+plate_size   = { x = 500, y = 700, z = 40 }  # tray dimensions in mm
+first_pot    = { x = 7, y = 24 }         # centre of the first pot (robot coords, mm)
+pot_distance = { x = 10, y = 12 }        # centre-to-centre spacing in mm
+nb_pot       = { x = 7, y = 11 }         # grid size: pots in X and Y
+\end{lstlisting}
+
+The application computes the position of pot $(i,j)$, with
+$0 \le i < \code{nb\_pot.x}$ and $0 \le j < \code{nb\_pot.y}$, as:
+\[
+  x_{ij} = \code{first\_pot.x} - i \cdot \code{pot\_distance.x},
+  \qquad
+  y_{ij} = \code{first\_pot.y} - j \cdot \code{pot\_distance.y}
+\]
+
+Note the \emph{subtraction}: the grid extends from the first pot towards
+\textbf{negative} X and Y. The first pot is therefore the one with the largest
+coordinates, and the whole grid must fit inside the safety limits of
+Section~\ref{sec:limits}.
+
+\begin{center}
+\begin{tikzpicture}[scale=0.9]
+  % Working area / axes
+  \draw[-{Stealth}, thick, gray] (-6.8,0) -- (1.2,0) node[below right, black] {$X$};
+  \draw[-{Stealth}, thick, gray] (0,-5.2) -- (0,1.0) node[above left, black] {$Y$};
+  \node[below left, gray] at (0,0) {\small $0,0$};
+  % Plate outline
+  \draw[rounded corners=2pt, fill=accentlight, draw=accent, thick]
+        (-6.3,-4.7) rectangle (0.8,0.6);
+  \node[anchor=south west, accent] at (-6.25,-4.65) {\small tray};
+  % Pot grid: first pot at (0.2, 0.1), spacing 1.2 / 1.15, 5 x 4 pots
+  \foreach \i in {0,...,4}
+    \foreach \j in {0,...,3}
+      \draw[fill=white, draw=accent] ({0.2-\i*1.2},{0.1-\j*1.15}) circle (0.32);
+  % First pot marker
+  \draw[very thick, warncol] ({0.2-0.45},{0.1}) -- ({0.2+0.45},{0.1});
+  \draw[very thick, warncol] ({0.2},{0.1-0.45}) -- ({0.2},{0.1+0.45});
+  \node[warncol, anchor=west] at (1.0,0.9) {\small \code{first\_pot}};
+  \draw[-{Stealth}, warncol] (1.35,0.75) to[bend right=15] (0.5,0.35);
+  % Spacing annotations
+  \draw[{Stealth}-{Stealth}, thick] ({0.2-1.2},{0.1+0.55}) -- ({0.2},{0.1+0.55})
+        node[midway, above] {\small \code{pot\_distance.x}};
+  \draw[{Stealth}-{Stealth}, thick] ({0.2+0.55},{0.1-1.15}) -- ({0.2+0.55},{0.1})
+        node[midway, right] {\small \code{pot\_distance.y}};
+  % Grid extent braces
+  \draw[decorate, decoration={brace, mirror, amplitude=5pt}]
+        ({0.2-4*1.2-0.35},-5.0) -- ({0.2+0.35},-5.0)
+        node[midway, below=6pt] {\small \code{nb\_pot.x} columns};
+  \draw[decorate, decoration={brace, amplitude=5pt}]
+        (-6.6,{0.1-3*1.15-0.35}) -- (-6.6,{0.1+0.35})
+        node[midway, left=6pt, rotate=90, anchor=south] {\small \code{nb\_pot.y} rows};
+\end{tikzpicture}
+\end{center}
+
+\subsection{Worked example: adding a new tray type}
+
+Suppose a new tray has $6 \times 9$ pots, 15\,mm apart in X, 14\,mm apart in Y, and
+its first pot centre sits at robot coordinates $(30, 50)$:
+
+\begin{lstlisting}[language=TOML]
+[[plates]]
+name = "54pots"
+plate_size   = { x = 500, y = 700, z = 40 }
+first_pot    = { x = 30, y = 50 }
+pot_distance = { x = 15, y = 14 }
+nb_pot       = { x = 6, y = 9 }
+\end{lstlisting}
+
+Check the extremes: the last pot lies at
+$x = 30 - 5 \cdot 15 = -45$ and $y = 50 - 8 \cdot 14 = -62$ --- inside the default
+$\pm 160$\,mm limits. Restart the application; the new \textbf{54pots} button appears
+in the plate selection screen.

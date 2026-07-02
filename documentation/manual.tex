@@ -1,0 +1,54 @@
+% ============================================================================
+% DeltaX2 Control Application — User & Administrator Manual
+%
+% Main file. The document is split into:
+%   preamble.tex             packages, colors, boxes, listing styles, macros
+%   chapters/*.tex           one file per chapter (see \include list below)
+%
+% Build:  pdflatex manual.tex   (run twice for TOC and cross-references)
+%    or:  latexmk -pdf manual.tex
+% ============================================================================
+\documentclass[11pt, a4paper, parskip=half, numbers=noenddot]{scrreprt}
+
+\input{preamble}
+
+\begin{document}
+
+% ----- Title page -----------------------------------------------------------
+\begin{titlepage}
+  \sffamily
+  \vspace*{2cm}
+  {\color{accent}\hrule height 2.5pt}\par
+  \vspace{1.2cm}
+  {\Huge\bfseries\color{accent} \appname{} Control Application\par}
+  \vspace{0.4cm}
+  {\LARGE User \& Administrator Manual\par}
+  \vspace{1.2cm}
+  {\color{accent}\hrule height 0.8pt}\par
+  \vspace{2cm}
+  \begin{tabular}{@{}ll@{}}
+    \textbf{Software version} & \appversion \\[2pt]
+    \textbf{Target platform}  & Raspberry~Pi~5, 7\,'' touch screen (800\,$\times$\,480) \\[2pt]
+    \textbf{Robot}            & Delta~X~2 \\[2pt]
+    \textbf{Date}             & July 2026 \\
+  \end{tabular}
+  \vfill
+  {\small This manual covers installation, configuration and daily operation of the
+  \appname{} seeding-robot control application.\par}
+\end{titlepage}
+
+\tableofcontents
+
+\include{chapters/introduction}
+\include{chapters/overview}
+\include{chapters/installation}
+\include{chapters/raspberrypi}
+\include{chapters/configuration}
+\include{chapters/usage}
+\include{chapters/troubleshooting}
+
+\appendix
+\include{chapters/gcode}
+\include{chapters/limitations}
+
+\end{document}

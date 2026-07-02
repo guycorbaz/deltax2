@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Control application for the Delta X 2 robot (a delta-arm seeding robot), written in Rust with a Slint UI. Ported from a C++/Qt codebase. Targets a Raspberry Pi with a 7'' touch screen (fixed 800x480 window), communicating with the robot firmware over a serial port using G-code.
+Control application for the Delta X 2 robot (a delta-arm seeding robot), written in Rust with a Slint UI. Ported from a C++/Qt codebase. Deployment target is a Raspberry Pi 5 with a 7'' touch screen (fixed 800x480 window), communicating with the robot firmware over a serial port using G-code.
+
+Daily operation is **touch-only** (kiosk mode, no keyboard/mouse, stdout invisible): anything the operator needs at runtime — error messages, diagnostics, reconnect, stop/pause — must be available in the UI with finger-sized touch targets. Administrative tasks (editing `config.toml`, deployment, console diagnostics) are done over SSH or a local terminal, so keyboard-driven setup is acceptable there.
 
 ## Commands
 
@@ -18,7 +20,7 @@ cargo doc --open       # internal API docs (code is heavily doc-commented)
 
 The app requires `config.toml` in the working directory at startup (it exits with an error otherwise) and attempts a serial connection immediately, but keeps running with a "Disconnected" status if the robot is unreachable.
 
-On Raspberry Pi, run with `SLINT_BACKEND=linuxkms` (see `documentation/raspberry_pi.md`).
+On Raspberry Pi, run with `SLINT_BACKEND=linuxkms` (see the Raspberry Pi chapter of the manual).
 
 ## Architecture
 
@@ -30,11 +32,17 @@ Three layers, glued together in `src/main.rs`:
 
 3. **Serial transport** — `src/serial.rs` (`SerialCommunication`). Thin wrapper over the `serialport` crate with a 10ms read timeout; raw bytes only, no protocol knowledge.
 
-`src/lib.rs` exposes `robot` and `serial` as a library; `src/main.rs` is the binary that wires UI callbacks to `DeltaRobot` methods. The robot is shared across callbacks as `Rc<RefCell<DeltaRobot>>` — everything runs single-threaded on the Slint event loop, so long robot operations (homing, seeding a whole plate) currently block the UI.
+`src/lib.rs` exposes `robot` and `serial` as a library; `src/main.rs` is the binary that wires the two together. Threading model: all robot I/O runs on a dedicated worker thread that owns `DeltaRobot`. UI callbacks send `RobotCommand` enum values over an mpsc channel (processed strictly sequentially); the worker pushes results back with `slint::Weak::upgrade_in_event_loop`. Stop/pause/continue for a seeding job do NOT go through the channel — the worker is busy inside `seed_plate` then — they set atomic flags in a shared `SeedingControl` (`src/robot.rs`) that the seeding loop checks between pots. The worker resets those flags when it *dequeues* a new seeding job (not when the UI queues it), so a stop aimed at a running job can't be erased early.
+
+The seeding flow is two-step in the UI: `plate-selected` only records the chosen `Plate`; the job is sent to the worker by `start-seeding`, fired from the ConfirmSeed screen's OK button.
+
+## Documentation
+
+The user/administrator manual lives in `documentation/`: `manual.tex` (main file + title page), `preamble.tex` (packages, colors, box/listing styles), and one file per chapter in `chapters/`. Build with `latexmk -pdf manual.tex` (or `pdflatex` twice) inside `documentation/`; keep the committed `manual.pdf` in sync after edits. The former `deltax2_gcode.md` and `raspberry_pi.md` were absorbed into `chapters/gcode.tex` and `chapters/raspberrypi.tex` — update those, not markdown files.
 
 ## Robot Protocol Essentials
 
-Full reference in `documentation/deltax2_gcode.md`.
+Full reference in `documentation/chapters/gcode.tex` (manual Appendix A).
 
 - Connection handshake: send `IsDelta\n`, expect `YesDelta` (checked case-insensitively) within 2s.
 - Synchronization: every command is sent with a `FEEDBACK:ok` suffix and the code blocks in `wait_for_ok()` until `ok` arrives (per-command timeouts: 2s for mode switches, 5s for moves, 10s for homing).

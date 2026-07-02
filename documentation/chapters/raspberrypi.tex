@@ -1,0 +1,151 @@
+% ============================================================================
+\chapter{Raspberry Pi deployment}
+\label{ch:rpi}
+% ============================================================================
+
+This chapter describes how to deploy and run the \appname{} application on a
+Raspberry~Pi with a 7\,'' touch screen (800\,$\times$\,480 resolution) as a
+dedicated, touch-only operator terminal.
+
+\section{Operating system}
+
+Use \textbf{Raspberry Pi OS (64-bit)}. The Lite version is suitable --- and
+preferred --- if you run the application in kiosk mode without a full desktop
+environment: the application can render directly to the screen
+(Section~\ref{sec:rendering}).
+
+\section{System dependencies}
+
+When building the application on the Pi, or running it with the default renderer,
+install the following system libraries first:
+
+\begin{lstlisting}[language=bash]
+$ sudo apt-get update
+$ sudo apt-get install -y build-essential cmake \
+      libfreetype6-dev libfontconfig1-dev libssh-dev \
+      libxkbcommon-dev libinput-dev libudev-dev libgbm-dev
+\end{lstlisting}
+
+\section{Building on the Pi and cross-compilation}
+
+The straightforward approach is to build natively on the Pi~5 (a release build takes
+a few minutes): copy or clone the repository onto the Pi and run
+\code{cargo build --release}.
+
+Building on the Pi can be slow on older models; you can instead cross-compile from a
+faster machine using \code{cross-rs}:
+
+\begin{lstlisting}[language=bash]
+$ cargo install cross
+$ cross build --target aarch64-unknown-linux-gnu --release
+\end{lstlisting}
+
+Then copy the resulting binary \emph{and} \code{config.toml} to the Pi.
+
+\section{Performance and rendering}
+\label{sec:rendering}
+
+Slint supports multiple rendering backends. On a Raspberry~Pi, the
+\textbf{\code{linuxkms}} backend is often the most performant, as it renders
+directly to the screen without X11 or Wayland overhead.
+
+To run with LinuxKMS:
+
+\begin{enumerate}[itemsep=2pt]
+  \item Ensure your user is in the \code{video} and \code{input} groups:
+\begin{lstlisting}[language=bash]
+$ sudo usermod -aG video,input,render $USER
+\end{lstlisting}
+  \item Run the application with the backend selected via the environment:
+\begin{lstlisting}[language=bash]
+$ SLINT_BACKEND=linuxkms ./deltax2
+\end{lstlisting}
+\end{enumerate}
+
+\begin{note}
+The \code{linuxkms} backend is an optional Slint feature and must be enabled at
+compile time. If \code{SLINT\_BACKEND=linuxkms} reports an unknown backend, add the
+feature to \code{Cargo.toml} and rebuild:
+\begin{lstlisting}[language=TOML]
+slint = { version = "1.14", features = ["backend-linuxkms"] }
+\end{lstlisting}
+When running under a desktop session (X11 or Wayland) instead, no environment
+variable is needed; the default \code{winit} backend is used.
+\end{note}
+
+\section{Kiosk mode}
+
+For daily operation the application should fill the screen without window
+decorations. This is controlled by the configuration file
+(Chapter~\ref{ch:configuration}):
+
+\begin{lstlisting}[language=TOML]
+[ui]
+kiosk_mode = true
+\end{lstlisting}
+
+\section{Automatic start with systemd}
+\label{sec:systemd}
+
+To run the application as a standalone interface on boot, create the unit file
+\code{deltax2.service} in \code{/etc/systemd/system/} (adjust user and paths):
+
+\begin{lstlisting}
+[Unit]
+Description=DeltaX2 seeding robot control UI
+After=multi-user.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/deltax2
+Environment=SLINT_BACKEND=linuxkms
+ExecStart=/home/pi/deltax2/target/release/deltax2
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+\end{lstlisting}
+
+Then enable and start it:
+
+\begin{lstlisting}[language=bash]
+$ sudo systemctl daemon-reload
+$ sudo systemctl enable --now deltax2.service
+$ journalctl -u deltax2 -f        # follow the application log
+\end{lstlisting}
+
+All console messages of the application (connection results, executed serial
+commands, port listings) appear in the systemd journal, which is the primary
+diagnostic channel when working over SSH.
+
+If you use a display manager and a desktop session instead of the bare-metal
+\code{linuxkms} setup, an \code{.xsession} file or the desktop environment's
+autostart mechanism can launch the application in the same way (without the
+\code{SLINT\_BACKEND} variable).
+
+\section{Touch screen calibration}
+\label{sec:touchcal}
+
+If the touch input is inverted or misaligned, configure \code{libinput} with a udev
+rule that sets the \code{LIBINPUT\_CALIBRATION\_MATRIX}, e.g.\ in
+\code{/etc/udev/rules.d/99-touch.rules}:
+
+\begin{lstlisting}
+ENV{ID_INPUT_TOUCHSCREEN}=="1", \
+  ENV{LIBINPUT_CALIBRATION_MATRIX}="1 0 0 0 1 0"
+\end{lstlisting}
+
+The six values form the first two rows of a 3$\times$3 transformation matrix;
+for example \code{-1 0 1 0 -1 1} rotates the input by 180°.
+
+\section{Serial port permissions}
+
+If the application cannot open the serial port, ensure the user has permission to
+access serial devices:
+
+\begin{lstlisting}[language=bash]
+$ sudo usermod -aG dialout $USER
+\end{lstlisting}
+
+Log out and back in (or restart the systemd service) for the change to take effect.

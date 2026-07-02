@@ -1,0 +1,175 @@
+% ============================================================================
+\chapter{Delta X 2 G-code specification}
+\label{app:gcode}
+% ============================================================================
+
+This appendix specifies the G-code commands and the communication protocol of the
+Delta~X~2 robot, and describes how the \appname{} application uses them.
+
+\section{Communication protocol}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+  \toprule
+  \textbf{Parameter} & \textbf{Value} \\
+  \midrule
+  Baud rate & 115\,200 \\
+  Line ending & \code{\textbackslash n} (newline) \\
+  Handshaking & The robot typically responds to commands. For critical
+    synchronization, use the \code{FEEDBACK} parameter
+    (Section~\ref{sec:feedback}). \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Identification and status}
+
+\subsection{\code{IsDelta}}
+
+Queries the device to confirm it is a Delta~X robot.
+
+\begin{itemize}[itemsep=1pt]
+  \item \textbf{Response}: \code{YesDelta}
+\end{itemize}
+
+\subsection{\code{DeltaState}}
+
+Queries the current operating state of the robot. Possible responses:
+
+\begin{center}
+\begin{tabularx}{0.8\textwidth}{@{}lX@{}}
+  \toprule
+  \textbf{Response} & \textbf{Meaning} \\
+  \midrule
+  \code{Free}       & Idle and ready. \\
+  \code{Running}    & Executing a command. \\
+  \code{Wait}       & Waiting for input or synchronization. \\
+  \code{Almostdone} & Near the end of a movement. \\
+  \code{Done}       & Movement or command completed. \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{\code{Position}}
+
+Returns the current coordinates of the robot.
+
+\begin{itemize}[itemsep=1pt]
+  \item \textbf{Response format}:
+        \code{X:<val> Y:<val> Z:<val> W:<val> U:<val>}
+\end{itemize}
+
+\section{Movement commands (G-codes)}
+
+\subsection{\code{G00} / \code{G01}: linear movement}
+
+Moves the end-effector to the specified coordinates.
+
+\begin{itemize}[itemsep=1pt]
+  \item \textbf{Syntax}: \code{G01 X<val> Y<val> Z<val> F<speed>}
+  \item \textbf{Example}: \code{G01 X10.5 Y-20.0 Z-150.0 F2000}
+\end{itemize}
+
+\subsection{\code{G28}: homing}
+
+Moves all axes to their home position (top endstops).
+
+\begin{itemize}[itemsep=1pt]
+  \item \textbf{Origin} ($X0\,Y0\,Z0$): after homing, the robot is positioned at the
+        top centre of the workspace.
+  \item \textbf{Z axis}: moves downward with negative values. $Z{=}0$ is the top;
+        $Z{=}{-200}$ is near the bottom of the workspace.
+\end{itemize}
+
+\subsection{\code{G90}: absolute positioning}
+
+Interpret subsequent coordinates as absolute positions relative to the origin.
+
+\subsection{\code{G91}: relative positioning}
+
+Interpret subsequent coordinates as displacements from the current position
+(useful for jogging).
+
+\section{Synchronization (\code{FEEDBACK})}
+\label{sec:feedback}
+
+\code{FEEDBACK:<string>} can be appended to any G-code command. The robot echoes
+\code{<string>} back to the serial port once the command has been successfully
+executed.
+
+\begin{itemize}[itemsep=1pt]
+  \item \textbf{Example}: \code{G01 X0 Y0 Z-50 FEEDBACK:done}
+  \item \textbf{Response}: \code{done} (sent after the move finishes).
+\end{itemize}
+
+\section{End-effector controls (M-codes)}
+
+\begin{center}
+\begin{tabularx}{0.8\textwidth}{@{}lX@{}}
+  \toprule
+  \textbf{Command} & \textbf{Meaning} \\
+  \midrule
+  \code{M03} & Output on --- activates the end effector (e.g.\ opens gripper,
+    starts vacuum). \\
+  \code{M05} & Output off --- deactivates the end effector. \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Physical workspace (SP-X2)}
+\label{sec:workspace}
+
+\begin{center}
+\begin{tabularx}{0.7\textwidth}{@{}lX@{}}
+  \toprule
+  \textbf{Axis} & \textbf{Range} \\
+  \midrule
+  X & $-160$\,mm to $+160$\,mm \\
+  Y & $-160$\,mm to $+160$\,mm \\
+  Z & $-200$\,mm to $0$\,mm ($0$ at the top) \\
+  Working diameter & 320\,mm \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{center}
+\begin{tikzpicture}[x=0.028cm, y=0.028cm, font=\sffamily\small]
+  % Robot base above the workspace
+  \draw[fill=codegray, draw=black!45, thick, rounded corners=2pt]
+        (-110,25) rectangle (110,60);
+  \node at (0,42) {\scriptsize Delta X 2 base};
+  % Arms hint
+  \draw[black!45, thick] (-90,25) -- (-25,2);
+  \draw[black!45, thick] (90,25) -- (25,2);
+  \draw[black!45, thick] (0,25) -- (0,6);
+  % Working volume (side view of the cylinder)
+  \draw[fill=accentlight, draw=accent, thick, dashed]
+        (-160,-200) rectangle (160,0);
+  % Home position
+  \filldraw[warncol] (0,0) circle (5);
+  \node[above right, warncol] at (5,-24) {\scriptsize home $(0,0,0)$ after \code{G28}};
+  % Z axis annotation (left side)
+  \draw[-{Stealth}, thick] (-195,0) -- (-195,-200);
+  \node[left] at (-197,0)    {\scriptsize $Z{=}0$};
+  \node[left] at (-197,-200) {\scriptsize $Z{=}{-200}$};
+  \node[left, rotate=90, anchor=south] at (-225,-100) {\scriptsize Z (downward $=$ negative)};
+  % X range annotation (bottom)
+  \draw[{Stealth}-{Stealth}, thick] (-160,-232) -- (160,-232);
+  \node[below] at (0,-235) {\scriptsize $X$: $-160$\,mm \dots\ $+160$\,mm
+        \enspace (working diameter 320\,mm)};
+  \draw[black!45] (-160,-200) -- (-160,-238);
+  \draw[black!45] (160,-200) -- (160,-238);
+  % Label inside volume
+  \node[accent] at (0,-140) {\scriptsize working volume (side view)};
+\end{tikzpicture}
+\end{center}
+
+\section{How the application uses the protocol}
+
+At connection time the application sends \code{IsDelta} and requires the
+\code{YesDelta} answer within two seconds. Every command it issues afterwards
+carries a \code{FEEDBACK:ok} suffix, and the next command is only sent after the
+robot has echoed \code{ok}. Jog moves from the calibration screen are wrapped in
+\code{G91}~\dots~\code{G90} so they execute as relative displacements; homing uses
+\code{G28}. The \code{M03}/\code{M05} end-effector commands are reserved for the
+per-pot seeding action (Appendix~\ref{app:limitations}).

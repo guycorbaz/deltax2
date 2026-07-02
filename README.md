@@ -64,8 +64,7 @@ Detailed configuration documentation can be found within the `config.toml` file 
 
 ## 📖 Documentation
 
-- **G-code Reference**: See [documentation/deltax2_gcode.md](documentation/deltax2_gcode.md) for a full list of supported commands and the communication protocol.
-- **Raspberry Pi Deployment**: See [documentation/raspberry_pi.md](documentation/raspberry_pi.md) for 7'' touch screen setup.
+- **User & Administrator Manual**: See [documentation/manual.pdf](documentation/manual.pdf) — covers installation, Raspberry Pi deployment, configuration, daily operation, troubleshooting, and the full Delta X 2 G-code specification. LaTeX sources are in `documentation/` (build with `latexmk -pdf manual.tex`).
 - **Source Code**: Run `cargo doc --open` to view the detailed internal API documentation.
 
 ## 🤝 Contributing

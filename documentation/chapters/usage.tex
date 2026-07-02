@@ -1,0 +1,121 @@
+% ============================================================================
+\chapter{Daily operation}
+\label{ch:usage}
+% ============================================================================
+
+This chapter describes operation through the touch screen only; no keyboard is
+required. The navigation between screens is summarized in the screen map of
+Section~\ref{sec:screenmap}.
+
+\section{Start-up and the status bar}
+
+After power-on (with the systemd unit of Section~\ref{sec:systemd}), the application
+starts automatically and immediately shows the \textbf{Main} screen while it connects
+to the robot in the background. The status bar at the bottom shows:
+
+\begin{itemize}[itemsep=2pt]
+  \item a \textbf{connection indicator}: green \emph{Connected} once the robot has
+        answered the identification handshake, red \emph{Disconnected} otherwise;
+  \item the latest \textbf{status message}, e.g.\ \emph{Connecting\dots},
+        \emph{Connected}, \emph{Move OK}, \emph{Homing complete}, or an error text.
+\end{itemize}
+
+\begin{note}
+If the robot was off when the terminal started, the status shows
+\emph{Connection \dots\ failed}. Power the robot on, then restart the application
+(power-cycle the terminal, or \code{sudo systemctl restart deltax2} over SSH).
+An in-UI reconnect button is planned (Appendix~\ref{app:limitations}).
+\end{note}
+
+\section{Main screen}
+
+Three buttons:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+  \toprule
+  \textbf{Button} & \textbf{Function} \\
+  \midrule
+  \textbf{Seeding} & Starts the guided seeding workflow (Section~\ref{sec:seeding}). \\
+  \textbf{Calibration} & Opens manual jog and homing (Section~\ref{sec:calibration}). \\
+  \textbf{Configuration} & Opens system utilities (Section~\ref{sec:systemscreen}). \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Seeding a plate}
+\label{sec:seeding}
+
+\begin{enumerate}[itemsep=3pt]
+  \item Touch \textbf{Seeding} on the main screen.
+  \item \textbf{Install the seeding plate}: place the tray in its mechanical
+        reference position, then touch the button matching its type
+        (e.g.\ \textbf{77pots}). The choice is recorded and shown in the status bar.
+        \textbf{Cancel} returns to the main screen.
+  \item \textbf{Load the seeds}: fill the seed supply, then touch \textbf{Ok} to
+        start the job --- the robot homes first and then processes the tray pot by
+        pot. \textbf{Cancel} returns to the main screen without moving the robot.
+  \item \textbf{Seeding in progress}: the screen shows the live progress
+        (\emph{Pot 12 / 77}) and three controls:
+    \begin{itemize}[itemsep=1pt]
+      \item \textbf{Pause} ($\parallel$) --- the robot finishes the current pot and
+            waits. The status bar shows \emph{Seeding paused}.
+      \item \textbf{Continue} ($\triangleright$) --- resumes a paused job.
+      \item \textbf{Stop} ($\square$) --- aborts the job: the robot finishes the
+            current pot, then stops. The display returns to the main screen and the
+            status bar shows \emph{Stopping\dots} followed by \emph{Seeding stopped}.
+    \end{itemize}
+  \item On completion the display returns to the main screen and the status bar
+        shows \emph{Seeding complete}.
+\end{enumerate}
+
+\begin{warning}
+\textbf{Stop} waits for the current pot to finish; it does not cut power. For
+immediate mechanical arrest in an emergency, use the machine's hardware
+emergency stop (if fitted) or remove robot power.
+\end{warning}
+
+\section{Calibration and manual movement}
+\label{sec:calibration}
+
+The \textbf{Calibration} screen provides:
+
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Step size selector} --- four buttons: 0.01, 0.1, 1 or 5\,mm.
+        The selected value applies to every subsequent jog.
+  \item \textbf{XY pad} --- arrow buttons jog the head in X and Y by one step per
+        touch; the centre button homes all axes (\code{G28}).
+  \item \textbf{Z column} --- up/down jog the head vertically; the centre button
+        also triggers homing.
+  \item \textbf{Cart column} --- up/down adjust the rotation axis; the centre
+        button resets its displayed value (see the note below).
+  \item \textbf{Position panel} --- live display of the logical X, Y, Z and Cart
+        coordinates in mm.
+\end{itemize}
+
+Each jog is checked against the safety limits; a refused move leaves the robot
+untouched and shows \emph{Movement out of safety limits} in the status bar.
+After homing, the position display resets to $0.000$ on all axes.
+
+\begin{note}
+In the current software version the \textbf{Cart} axis is tracked on screen but not
+yet driven on the hardware (Appendix~\ref{app:limitations}).
+\end{note}
+
+\begin{tip}
+Jog commands are queued and executed in order. On a touch screen it is easy to tap
+faster than the robot moves --- prefer single deliberate taps and watch the position
+readout; each completed move updates the display.
+\end{tip}
+
+\section{System screen}
+\label{sec:systemscreen}
+
+The \textbf{Configuration} button opens the system screen, which currently offers:
+
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{List com} --- enumerates the serial ports detected on the system.
+        The result is written to the application log (visible with
+        \code{journalctl -u deltax2} over SSH), which helps an administrator find
+        the correct \code{port} value for \code{config.toml}.
+\end{itemize}

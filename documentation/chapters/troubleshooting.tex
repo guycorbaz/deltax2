@@ -1,0 +1,58 @@
+% ============================================================================
+\chapter{Troubleshooting}
+\label{ch:troubleshooting}
+% ============================================================================
+
+\section{Common problems}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}p{0.34\textwidth}X@{}}
+  \toprule
+  \textbf{Symptom} & \textbf{Cause and remedy} \\
+  \midrule
+  Status: \emph{Connection to \dots\ failed: Permission denied} &
+    The user lacks serial-port rights. \code{sudo usermod -aG dialout <user>},
+    then log out/in (or restart the service). \\
+  \addlinespace
+  Status: \emph{Connection \dots\ failed: No such file or directory} &
+    Wrong \code{port} in \code{config.toml}, or the USB cable is unplugged.
+    Use \textbf{List com} / \code{ls /dev/serial/by-id/} to identify the device. \\
+  \addlinespace
+  Status: \emph{Device on \dots\ did not respond correctly to IsDelta} &
+    A serial device was found but it is not (or not yet) the robot: wrong port,
+    wrong baud rate, or robot still booting. Verify \code{baud\_rate = 115200},
+    power-cycle the robot, restart the application. \\
+  \addlinespace
+  Status: \emph{Timeout waiting for 'ok' from robot} &
+    The robot stopped answering mid-command: cable disturbed, firmware halted, or
+    mechanical fault. Check the machine, then restart the application and re-home
+    before continuing. \\
+  \addlinespace
+  Status: \emph{Movement out of safety limits} &
+    The requested jog would leave the configured box. If the limits are too tight
+    for your tooling, adjust \code{[robot]} in \code{config.toml}
+    (Section~\ref{sec:limits}). \\
+  \addlinespace
+  Application does not start on the Pi (blank screen) &
+    Check \code{journalctl -u deltax2}. Typical causes: missing/invalid
+    \code{config.toml} in the \code{WorkingDirectory}, or the binary was built
+    without the \code{linuxkms} backend feature while
+    \code{SLINT\_BACKEND=linuxkms} is set (Section~\ref{sec:rendering}). \\
+  \addlinespace
+  Touch input misaligned or rotated &
+    Configure \code{LIBINPUT\_CALIBRATION\_MATRIX} via a udev rule
+    (Section~\ref{sec:touchcal}). \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Diagnostics over SSH}
+
+\begin{lstlisting}[language=bash]
+$ journalctl -u deltax2 -f          # live application log
+$ ls -l /dev/serial/by-id/          # stable names of USB serial adapters
+$ sudo systemctl restart deltax2    # restart the UI after config changes
+\end{lstlisting}
+
+The log contains every serial command sent (\code{Serial write: \dots}), all status
+messages shown in the UI, and the output of \textbf{List com}.

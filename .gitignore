@@ -14,3 +14,12 @@ Thumbs.db
 # Slint
 # (Mostly handled by /target, but in case of manual generation)
 generated/
+
+# LaTeX build artifacts (documentation/)
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz

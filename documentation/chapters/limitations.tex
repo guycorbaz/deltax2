@@ -1,0 +1,24 @@
+% ============================================================================
+\chapter{Development status and known limitations}
+\label{app:limitations}
+% ============================================================================
+
+This software is under active development (version \appversion). The following
+limitations are known and planned to be addressed:
+
+\begin{itemize}[itemsep=3pt]
+  \item \textbf{Per-pot seeding action}: the movement/tool sequence executed at each
+        pot position is not yet implemented; a seeding run currently homes the robot
+        and steps through the pot grid without dispensing. The implementation will
+        use the \code{M03}/\code{M05} end-effector commands
+        (Appendix~\ref{app:gcode}).
+  \item \textbf{Cart (rotation) axis}: tracked in the interface but not yet driven
+        on the hardware.
+  \item \textbf{Reconnection}: if the robot is unavailable at start-up, the
+        application must be restarted to retry; an in-UI reconnect is planned.
+  \item \textbf{Port listing}: \textbf{List com} reports to the application log
+        only, not on screen.
+  \item \textbf{Hardware emergency stop}: a physical mushroom-head stop button that
+        cuts robot motor power (with a second contact informing the application via
+        GPIO) is recommended and planned, but not yet part of the design.
+\end{itemize}

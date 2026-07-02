@@ -1,0 +1,91 @@
+% ============================================================================
+% Shared preamble for the DeltaX2 manual (loaded by manual.tex)
+% ============================================================================
+
+% ----- Fonts & typography ---------------------------------------------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amssymb}
+
+% ----- Layout ---------------------------------------------------------------
+\usepackage[a4paper, margin=2.4cm, headheight=14pt]{geometry}
+\usepackage[headsepline]{scrlayer-scrpage}
+\pagestyle{scrheadings}
+\clearpairofpagestyles
+\ihead{\headmark}
+\ohead{\pagemark}
+\automark[section]{chapter}
+
+% ----- Color palette --------------------------------------------------------
+\usepackage{xcolor}
+\definecolor{accent}{RGB}{27,94,54}      % deep leaf green
+\definecolor{accentlight}{RGB}{232,242,236}
+\definecolor{warncol}{RGB}{176,58,46}    % brick red
+\definecolor{warnlight}{RGB}{250,235,233}
+\definecolor{tipcol}{RGB}{40,90,150}     % steel blue
+\definecolor{tiplight}{RGB}{232,240,249}
+\definecolor{codegray}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{210,210,210}
+\definecolor{keyword}{RGB}{27,94,54}
+\definecolor{stringcol}{RGB}{150,80,20}
+\definecolor{commentcol}{RGB}{120,120,120}
+
+\addtokomafont{disposition}{\color{accent}}
+\addtokomafont{pagehead}{\small\sffamily}
+
+% ----- Boxes ----------------------------------------------------------------
+\usepackage[most]{tcolorbox}
+\newtcolorbox{note}{%
+  enhanced, breakable, colback=accentlight, colframe=accent,
+  boxrule=0pt, leftrule=3pt, arc=1mm, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  fonttitle=\sffamily\bfseries, title={Note}, coltitle=accent,
+  attach title to upper={\par}}
+\newtcolorbox{warning}{%
+  enhanced, breakable, colback=warnlight, colframe=warncol,
+  boxrule=0pt, leftrule=3pt, arc=1mm, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  fonttitle=\sffamily\bfseries, title={Warning}, coltitle=warncol,
+  attach title to upper={\par}}
+\newtcolorbox{tip}{%
+  enhanced, breakable, colback=tiplight, colframe=tipcol,
+  boxrule=0pt, leftrule=3pt, arc=1mm, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  fonttitle=\sffamily\bfseries, title={Tip}, coltitle=tipcol,
+  attach title to upper={\par}}
+
+% ----- Code listings --------------------------------------------------------
+\usepackage{listings}
+\lstdefinelanguage{TOML}{
+  comment=[l]{\#},
+  morestring=[b]{"},
+  morekeywords={true,false},
+  sensitive=true,
+}
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codegray},
+  frame=single, rulecolor=\color{codeframe}, framerule=0.4pt,
+  keywordstyle=\color{keyword}\bfseries,
+  stringstyle=\color{stringcol},
+  commentstyle=\color{commentcol}\itshape,
+  breaklines=true, columns=fullflexible, keepspaces=true,
+  aboveskip=8pt, belowskip=8pt,
+  xleftmargin=4pt, xrightmargin=4pt, framexleftmargin=4pt,
+}
+
+% ----- Tables & figures -----------------------------------------------------
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, decorations.pathreplacing, calc, positioning, fit, backgrounds}
+
+% ----- Hyperlinks (load last) -----------------------------------------------
+\usepackage[colorlinks=true, linkcolor=accent, urlcolor=tipcol,
+            pdftitle={DeltaX2 Control Application Manual},
+            pdfauthor={Guy Corbaz}]{hyperref}
+
+% ----- Shorthands -----------------------------------------------------------
+\newcommand{\appname}{DeltaX2}
+\newcommand{\appversion}{0.1.0}
+\newcommand{\code}[1]{\texttt{#1}}

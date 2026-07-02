@@ -53,7 +53,14 @@ export component AppWindow inherits Window {
     callback home-cart();         // Reset carriage position
     callback list-com-ports();     // Triggers serial port enumeration log
     in property <[string]> plate-names; // List of plate names from config.toml
-    callback plate-selected(int);  // User selected a plate index
+    callback plate-selected(int);  // User selected a plate index (records the choice only)
+    callback start-seeding();      // User confirmed seeds are loaded; begin the plate job
+    callback stop-seeding();       // Abort the running seeding job
+    callback pause-seeding();      // Suspend the seeding job before the next pot
+    callback continue-seeding();   // Resume a paused seeding job
+
+    // Progress of the running seeding job (e.g., "Pot 12 / 77"), set by the backend.
+    in-out property <string> seeding-progress: "";
 
     VerticalLayout {
         // Content Area: Dynamically switches between sub-screens based on current-screen state.
@@ -122,20 +129,30 @@ export component AppWindow inherits Window {
                 }
             }
 
-            // Seeding Flow: Confirmation
+            // Seeding Flow: Confirmation. The robot job starts only here,
+            // after the user confirmed that the seeds are loaded.
             if (root.current-screen == ScreenState.ConfirmSeed): ConfirmSeed {
                 cancel-clicked => {
                     root.current-screen = ScreenState.Main
                 }
                 ok-clicked => {
-                    root.current-screen = ScreenState.Seeding
+                    root.start-seeding();
+                    root.current-screen = ScreenState.Seeding;
                 }
             }
 
             // Seeding Flow: Active Process
             if (root.current-screen == ScreenState.Seeding): SeedingScreen {
+                progress-text: root.seeding-progress;
                 stop-clicked => {
-                    root.current-screen = ScreenState.Main
+                    root.stop-seeding();
+                    root.current-screen = ScreenState.Main;
+                }
+                pause-clicked => {
+                    root.pause-seeding()
+                }
+                continue-clicked => {
+                    root.continue-seeding()
                 }
             }
         }

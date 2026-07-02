@@ -6,5 +6,5 @@
 pub mod serial;
 pub mod robot;
 
-pub use robot::{DeltaRobot, Axis, Plate, Config};
+pub use robot::{DeltaRobot, Axis, Plate, Config, SeedingControl, SeedOutcome};
 pub use serial::SerialCommunication;

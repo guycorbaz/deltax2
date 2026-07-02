@@ -8,6 +8,7 @@
 use crate::serial::SerialCommunication;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Represents a 2D coordinate (X, Y).
 /// Typically used for pot locations or planar movements.
@@ -124,7 +125,46 @@ impl Default for Plate {
 }
 
 /// Enumerates the physical axes of the robot.
+#[derive(Debug, Clone, Copy)]
 pub enum Axis { X, Y, Z }
+
+/// Thread-safe flags used to pause or abort a running seeding job.
+///
+/// The UI thread sets these flags directly (not via the command channel),
+/// so a stop request takes effect even while the worker thread is busy
+/// executing the seeding loop.
+pub struct SeedingControl {
+    /// When set, the seeding loop terminates before the next pot.
+    pub abort: AtomicBool,
+    /// When set, the seeding loop waits before the next pot until cleared.
+    pub pause: AtomicBool,
+}
+
+impl SeedingControl {
+    /// Creates a new control block with both flags cleared.
+    pub fn new() -> Self {
+        Self {
+            abort: AtomicBool::new(false),
+            pause: AtomicBool::new(false),
+        }
+    }
+
+    /// Clears both flags. Called by the worker before starting a new job so
+    /// that a stop request from a previous job cannot leak into the next one.
+    pub fn reset(&self) {
+        self.abort.store(false, Ordering::SeqCst);
+        self.pause.store(false, Ordering::SeqCst);
+    }
+}
+
+/// How a seeding job ended (when it did not fail with an error).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeedOutcome {
+    /// Every pot of the plate was processed.
+    Completed,
+    /// The job was stopped by the user before finishing.
+    Aborted,
+}
 
 /// Interface for controlling a Delta X 2 robot.
 ///
@@ -356,27 +396,55 @@ impl DeltaRobot {
     /// It homes the robot first, then iterates through every pot position
     /// defined in the `Plate` structure, calling `seed_pot` for each.
     ///
+    /// The loop is cooperative: between pots it honors the `pause` and
+    /// `abort` flags in `control`, and reports progress through the
+    /// `progress` callback. This method blocks for the duration of the job
+    /// and is intended to run on the robot worker thread, with the flags
+    /// set from the UI thread.
+    ///
     /// # Arguments
     ///
     /// * `plate` - The plate geometry definition.
+    /// * `control` - Shared pause/abort flags checked before each pot.
+    /// * `progress` - Called after each pot with (pots done, total pots).
     ///
     /// # Errors
     ///
     /// Returns an error if any step in the process (homing, movement) fails.
-    pub fn seed_plate(&mut self, plate: &Plate) -> Result<()> {
+    /// A user-requested stop is not an error: it yields `Ok(SeedOutcome::Aborted)`.
+    pub fn seed_plate(
+        &mut self,
+        plate: &Plate,
+        control: &SeedingControl,
+        mut progress: impl FnMut(i32, i32),
+    ) -> Result<SeedOutcome> {
         self.home_cart()?;
         self.home_xyz()?;
+
+        let total = plate.nb_pot.x * plate.nb_pot.y;
+        let mut done = 0;
 
         // Iterate through the grid of pots
         for x in 0..plate.nb_pot.x {
             for y in 0..plate.nb_pot.y {
+                // Hold here while paused; a stop request also ends the pause wait.
+                while control.pause.load(Ordering::SeqCst) && !control.abort.load(Ordering::SeqCst) {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                if control.abort.load(Ordering::SeqCst) {
+                    return Ok(SeedOutcome::Aborted);
+                }
+
                 // Calculate position relative to the first pot
                 let pot_x = plate.first_pot.x - (x as f32 * plate.pot_distance.x);
                 let pot_y = plate.first_pot.y - (y as f32 * plate.pot_distance.y);
                 self.seed_pot(pot_x, pot_y)?;
+
+                done += 1;
+                progress(done, total);
             }
         }
-        Ok(())
+        Ok(SeedOutcome::Completed)
     }
 
     /// Performs the action required to seed a single pot.

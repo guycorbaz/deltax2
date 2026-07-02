@@ -12,12 +12,24 @@ export component SeedingScreen inherits Rectangle {
     callback pause-clicked();     // Suspend current movement
     callback continue-clicked();  // Resume suspended process
 
+    // Job progress text provided by the backend (e.g., "Pot 12 / 77").
+    in property <string> progress-text;
+
     // Status Title
     Text {
         text: @tr("Seeding in progress");
         y: 30px;
         font-size: 20px;
         font-weight: 700;
+        horizontal-alignment: center;
+        width: parent.width;
+    }
+
+    // Live progress readout
+    Text {
+        text: root.progress-text;
+        y: 80px;
+        font-size: 16px;
         horizontal-alignment: center;
         width: parent.width;
     }

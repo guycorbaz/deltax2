@@ -1,6 +1,13 @@
 # DeltaX2 Control Application
 
-A modern, high-performance control application for the **Delta X 2** robot, built with **Rust** and the **Slint** UI framework. Originally ported from a C++/Qt codebase, this version provides enhanced safety, robust synchronization, and easy configuration via TOML.
+[![Rust](https://img.shields.io/badge/Rust-edition%202024-orange?logo=rust)](https://www.rust-lang.org/)
+[![Slint](https://img.shields.io/badge/UI-Slint-2c4bd0)](https://slint.dev/)
+[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-3%20%7C%204%20%7C%205-c51a4a?logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+**Project website: [guycorbaz.github.io/deltax2](https://guycorbaz.github.io/deltax2/)**
+
+A modern, high-performance control application for the [**Delta X 2**](https://docs.deltaxrobot.com/products/deltax2/deltax2_basic_kit/) delta-arm seeding robot, built with **Rust** and the **Slint** UI framework. Originally ported from a C++/Qt codebase, this version provides enhanced safety, robust synchronization, and easy configuration via TOML.
 
 ## 🚀 Features
 
@@ -10,7 +17,7 @@ A modern, high-performance control application for the **Delta X 2** robot, buil
 - **Safety First**: Configurable software limits for X, Y, and Z axes to prevent hardware damage.
 - **Dynamic Configuration**: Easily manage seedling plates and robot parameters via a simple `config.toml` file.
 - **G-code Support**: Full support for standard Delta X G-codes (G0, G28, G90, G91, etc.).
-- **Raspberry Pi Ready**: Optimized for 7'' touch screens (800x480) with a specialized deployment guide.
+- **Raspberry Pi Ready**: Runs on Raspberry Pi 3, 4 and 5 (64-bit) with the official 7'' touch display (800x480), in touch-only kiosk mode, with a specialized deployment guide.
 
 ## 🛠 Prerequisites
 
@@ -25,7 +32,7 @@ To build and run this project, you need:
 1. **Clone the repository**:
 
    ```bash
-   git clone https://github.com/yourusername/deltax2.git
+   git clone https://github.com/guycorbaz/deltax2.git
    cd deltax2
    ```
 
@@ -73,7 +80,7 @@ Contributions are welcome! Please feel free to submit a Pull Request or open an 
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details (or add your preferred license).
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 *Developed for the Delta X 2 robot ecosystem.*

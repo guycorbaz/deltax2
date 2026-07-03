@@ -23,3 +23,7 @@ generated/
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+
+# Local AI tooling (not part of the public project)
+.claude/
+_bmad/

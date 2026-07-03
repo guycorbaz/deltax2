@@ -14,9 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Typically used for pot locations or planar movements.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Coord2D {
-    /// Horizontal coordinate in mm.
+    /// Planar X coordinate in mm.
     pub x: f32,
-    /// Vertical coordinate in mm.
+    /// Planar Y coordinate in mm (the vertical axis is Z, see [`Coord3D`]).
     pub y: f32,
 }
 
@@ -411,7 +411,8 @@ impl DeltaRobot {
 
     /// Updates the internal state for the rotation axis (cart).
     ///
-    /// Currently, this only updates local state and does not send hardware commands.
+    /// **Note: software-state only, no hardware command is sent.**
+    /// Real cart-axis control is tracked in issue #7.
     pub fn move_cart(&mut self, cart: f32) -> Result<()> {
         self.actual_cart += cart;
         Ok(())
@@ -437,6 +438,9 @@ impl DeltaRobot {
     }
 
     /// Resets the internal state for the rotation axis to 0.0.
+    ///
+    /// **Note: software-state only, no hardware command is sent.**
+    /// Real cart-axis control is tracked in issue #7.
     pub fn home_cart(&mut self) -> Result<()> {
         self.actual_cart = 0.0;
         Ok(())
@@ -501,8 +505,9 @@ impl DeltaRobot {
 
     /// Performs the action required to seed a single pot.
     ///
-    /// This is currently a placeholder for the specific sequence of moves
-    /// (e.g., move to (x,y), lower Z, activate tool, raise Z).
+    /// **Note: empty placeholder, no hardware command is sent.**
+    /// The real per-pot sequence (move to (x, y), lower Z, actuate tool,
+    /// raise Z) is tracked in issue #7.
     fn seed_pot(&mut self, _x: f32, _y: f32) -> Result<()> {
         // Implementation for seeding a pot (e.g., move to coordinates and toggle tool)
         Ok(())

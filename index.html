@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeltaX2 — Rust control app for the Delta X 2 seeding robot</title>
+<meta name="description" content="A modern Rust + Slint control application for the Delta X 2 delta-arm seeding robot, running on a Raspberry Pi touch kiosk.">
+<style>
+  :root {
+    --bg: #f7f8f7;
+    --bg-soft: #ffffff;
+    --text: #1c2420;
+    --text-soft: #55635c;
+    --accent: #2f9e5f;
+    --accent-2: #1d7a8c;
+    --border: #e2e7e4;
+    --code-bg: #10241a;
+    --code-text: #d3ecdb;
+    --shadow: 0 1px 3px rgba(20, 40, 30, .07), 0 8px 24px rgba(20, 40, 30, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1512;
+      --bg-soft: #16201b;
+      --text: #e8efe9;
+      --text-soft: #9db0a5;
+      --accent: #4cc584;
+      --accent-2: #56b8cc;
+      --border: #24302a;
+      --code-bg: #0a100d;
+      --code-text: #c7e5d1;
+      --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  header.nav {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .brand { font-weight: 700; font-size: 1.05rem; letter-spacing: -.01em; display: flex; align-items: center; gap: .55rem; text-decoration: none; color: var(--text); }
+  .brand .dot { width: 12px; height: 12px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+  nav.links { display: flex; gap: 1.4rem; font-size: .92rem; }
+  nav.links a { color: var(--text-soft); text-decoration: none; }
+  nav.links a:hover { color: var(--accent); }
+
+  .hero { padding: 88px 0 72px; text-align: center; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(600px 280px at 25% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+      radial-gradient(600px 280px at 75% 10%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 70%);
+  }
+  .hero .wrap { position: relative; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: .5rem;
+    font-size: .8rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    padding: .35rem .9rem; border-radius: 999px; margin-bottom: 1.4rem;
+  }
+  h1 {
+    font-size: clamp(2.3rem, 6vw, 3.6rem); line-height: 1.08; letter-spacing: -.03em; font-weight: 800;
+    margin-bottom: 1.1rem;
+  }
+  h1 .grad {
+    background: linear-gradient(100deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { font-size: 1.15rem; color: var(--text-soft); max-width: 640px; margin: 0 auto 2.2rem; }
+  .cta { display: flex; gap: .9rem; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .72rem 1.4rem; border-radius: 10px; font-weight: 600; font-size: .95rem;
+    text-decoration: none; transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: linear-gradient(120deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--accent-2))); color: #fff; box-shadow: var(--shadow); }
+  .btn-ghost { border: 1px solid var(--border); color: var(--text); background: var(--bg-soft); }
+  .chips { display: flex; gap: .55rem; justify-content: center; flex-wrap: wrap; margin-top: 2.4rem; }
+  .chip {
+    font-size: .8rem; font-weight: 600; color: var(--text-soft);
+    border: 1px solid var(--border); background: var(--bg-soft);
+    padding: .3rem .8rem; border-radius: 999px;
+  }
+
+  section { padding: 64px 0; }
+  section.alt { background: var(--bg-soft); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .sec-head { text-align: center; max-width: 620px; margin: 0 auto 2.8rem; }
+  .sec-head h2 { font-size: clamp(1.6rem, 3.5vw, 2.1rem); letter-spacing: -.02em; margin-bottom: .6rem; }
+  .sec-head p { color: var(--text-soft); }
+
+  .grid { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .card {
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1.5rem; box-shadow: var(--shadow);
+  }
+  section.alt .card { background: var(--bg); }
+  .card .icon { font-size: 1.5rem; margin-bottom: .7rem; display: block; }
+  .card h3 { font-size: 1.02rem; margin-bottom: .45rem; letter-spacing: -.01em; }
+  .card p { font-size: .92rem; color: var(--text-soft); }
+
+  .arch { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); counter-reset: layer; }
+  .layer { position: relative; padding-left: 0; }
+  .layer .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 8px; font-weight: 700; font-size: .9rem; color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); margin-bottom: .8rem;
+  }
+  code.inline {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .85em; background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-radius: 5px; padding: .1em .4em;
+  }
+
+  .code-wrap { overflow-x: auto; border-radius: 14px; box-shadow: var(--shadow); }
+  pre.code {
+    background: var(--code-bg); color: var(--code-text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88rem; line-height: 1.7; padding: 1.4rem 1.6rem; min-width: min-content;
+  }
+  pre.code .c { opacity: .55; }
+  pre.code .p { color: #7dd8a5; user-select: none; }
+
+  .doclinks { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  a.doccard { text-decoration: none; color: inherit; display: block; transition: transform .12s ease; }
+  a.doccard:hover { transform: translateY(-2px); }
+  a.doccard .card { height: 100%; }
+  a.doccard h3 { color: var(--accent); }
+
+  footer { border-top: 1px solid var(--border); padding: 2.2rem 0; text-align: center; color: var(--text-soft); font-size: .88rem; }
+  footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#"><span class="dot"></span>DeltaX2</a>
+    <nav class="links">
+      <a href="#features">Features</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#quickstart">Quick start</a>
+      <a href="#docs">Docs</a>
+      <a href="https://github.com/guycorbaz/deltax2">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Rust · Slint · Raspberry Pi</span>
+    <h1>Precision seeding,<br><span class="grad">driven by Rust</span></h1>
+    <p class="sub">
+      An open-source control application for the
+      <a href="https://docs.deltaxrobot.com/products/deltax2/deltax2_basic_kit/" style="color:var(--accent);text-decoration:none;">Delta&nbsp;X&nbsp;2</a>
+      delta-arm seeding robot — safe, fast and built for a touch-only greenhouse kiosk.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/guycorbaz/deltax2">View on GitHub</a>
+      <a class="btn btn-ghost" href="https://github.com/guycorbaz/deltax2/blob/master/docs/manual.pdf">Read the manual</a>
+    </div>
+    <div class="chips">
+      <span class="chip">Rust edition 2024</span>
+      <span class="chip">Slint UI</span>
+      <span class="chip">Raspberry Pi 3 / 4 / 5</span>
+      <span class="chip">7&Prime; touch display</span>
+      <span class="chip">G-code over serial</span>
+      <span class="chip">MIT license</span>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Built for the greenhouse, engineered like a flight controller</h2>
+      <p>Every design decision serves one person: the operator standing at the touchscreen, gloves on, no keyboard in sight.</p>
+    </div>
+    <div class="grid">
+      <div class="card"><span class="icon">🛡️</span><h3>Safety first</h3><p>Configurable software limits on X, Y and Z are checked <em>before</em> any command reaches the hardware — the last barrier before physical damage.</p></div>
+      <div class="card"><span class="icon">👆</span><h3>Touch-only kiosk</h3><p>Fixed 800×480 UI with finger-sized targets, designed for the official Raspberry Pi Touch Display. Everything the operator needs is on screen — errors included.</p></div>
+      <div class="card"><span class="icon">⚡</span><h3>Responsive by design</h3><p>All robot I/O runs on a dedicated worker thread. The UI never blocks — stop, pause and resume act instantly, even mid-job.</p></div>
+      <div class="card"><span class="icon">🌱</span><h3>Configurable trays</h3><p>Seeding plates are pure configuration: pot grid, spacing and origin live in <code class="inline">config.toml</code>. Adding a new tray type needs zero code.</p></div>
+      <div class="card"><span class="icon">🔌</span><h3>Robust protocol</h3><p>Native Delta&nbsp;X&nbsp;2 G-code with <code class="inline">IsDelta</code> handshake and per-command <code class="inline">FEEDBACK:ok</code> synchronization over serial.</p></div>
+      <div class="card"><span class="icon">🦀</span><h3>Modern stack</h3><p>Rust (edition 2024) for memory-safe control logic, Slint for a declarative, compiled UI. No async runtime, no surprises — boring technology, deliberately.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Three clean layers</h2>
+      <p>A strict separation keeps the robot logic testable and the UI honest.</p>
+    </div>
+    <div class="arch">
+      <div class="card layer"><span class="num">1</span><h3>Slint UI</h3><p>Declarative screens compiled at build time. State-driven navigation, a two-step seeding flow, and live progress — all mutated only from the event loop.</p></div>
+      <div class="card layer"><span class="num">2</span><h3>Robot logic</h3><p><code class="inline">DeltaRobot</code> generates G-code, tracks the head position and enforces safety limits. Owned exclusively by a worker thread fed through a command channel.</p></div>
+      <div class="card layer"><span class="num">3</span><h3>Serial transport</h3><p>A thin, byte-level wrapper over the serial port. No protocol knowledge, easy to mock — the robot never talks to raw hardware from anywhere else.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Quick start</h2>
+      <p>From clone to running UI in three commands. The app starts even with the robot unplugged.</p>
+    </div>
+    <div class="code-wrap">
+<pre class="code"><span class="c"># Grab the sources</span>
+<span class="p">$</span> git clone https://github.com/guycorbaz/deltax2.git &amp;&amp; cd deltax2
+
+<span class="c"># Point config.toml at your serial port, then build &amp; run</span>
+<span class="p">$</span> cargo run
+
+<span class="c"># On the Raspberry Pi (kiosk deployment)</span>
+<span class="p">$</span> SLINT_BACKEND=linuxkms ./target/release/deltax2</pre>
+    </div>
+  </div>
+</section>
+
+<section id="docs">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Documentation</h2>
+      <p>Everything is written down — from first boot to the full G-code reference.</p>
+    </div>
+    <div class="doclinks">
+      <a class="doccard" href="https://github.com/guycorbaz/deltax2/blob/master/docs/manual.pdf">
+        <div class="card"><span class="icon">📖</span><h3>User &amp; admin manual</h3><p>Installation, Raspberry Pi deployment, configuration, daily operation, troubleshooting and the Delta&nbsp;X&nbsp;2 G-code appendix (PDF, LaTeX sources included).</p></div>
+      </a>
+      <a class="doccard" href="https://github.com/guycorbaz/deltax2#readme">
+        <div class="card"><span class="icon">🚀</span><h3>README</h3><p>Features, prerequisites, build instructions and configuration examples — the fastest way to get oriented.</p></div>
+      </a>
+      <a class="doccard" href="https://docs.deltaxrobot.com/products/deltax2/deltax2_basic_kit/">
+        <div class="card"><span class="icon">🤖</span><h3>Delta X 2 hardware</h3><p>Official product documentation for the Delta&nbsp;X&nbsp;2 Basic Kit — mechanics, firmware and specifications.</p></div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>DeltaX2 Control Application · MIT License · <a href="https://github.com/guycorbaz/deltax2">github.com/guycorbaz/deltax2</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -206,6 +206,18 @@ impl Plate {
     }
 }
 
+/// Returns `true` when `buffer` contains a line that is exactly the `ok`
+/// acknowledgement (case-insensitive, surrounding whitespace ignored).
+///
+/// This is deliberately strict: an echoed command such as
+/// `G0 X10 FEEDBACK:ok` must NOT count as an acknowledgement — only a line
+/// of its own saying `ok` does. The trailing chunk after the last newline is
+/// also considered, so a firmware that answers `Ok` without a final newline
+/// is still recognized.
+fn has_ok_line(buffer: &str) -> bool {
+    buffer.lines().any(|l| l.trim().eq_ignore_ascii_case("ok"))
+}
+
 /// Enumerates the physical axes of the robot.
 #[derive(Debug, Clone, Copy)]
 pub enum Axis {
@@ -420,6 +432,8 @@ impl<T: Transport> DeltaRobot<T> {
     /// Returns an error if writing fails or no valid answer arrives within
     /// 2 seconds.
     fn handshake(&mut self) -> Result<()> {
+        // Stale bytes from a previous session must not satisfy the handshake.
+        self.transport.flush_input();
         // Verify it's a Delta Robot by sending an identity query
         self.transport.write_data(b"IsDelta\n")?;
 
@@ -473,10 +487,12 @@ impl<T: Transport> DeltaRobot<T> {
         )
     }
 
-    /// Waits for the 'ok' string in the serial stream.
+    /// Waits for an `ok` acknowledgement line in the serial stream.
     ///
     /// This is used to ensure the robot has finished executing a command before
-    /// sending the next one or updating the UI.
+    /// sending the next one or updating the UI. Matching is line-exact (see
+    /// [`has_ok_line`]) so an echoed `FEEDBACK:ok` suffix cannot satisfy the
+    /// wait for the wrong command.
     ///
     /// # Arguments
     ///
@@ -486,14 +502,14 @@ impl<T: Transport> DeltaRobot<T> {
     ///
     /// Returns an error if the timeout is reached or if serial communication is lost.
     fn wait_for_ok(&mut self, timeout_secs: u64) -> Result<()> {
-        let mut line = String::new();
+        let mut buffer = String::new();
         let start = std::time::Instant::now();
 
         while start.elapsed() < std::time::Duration::from_secs(timeout_secs) {
             if let Ok(data) = self.transport.read_data() {
-                line.push_str(&String::from_utf8_lossy(&data));
-                // Check if the feedback we requested has arrived
-                if line.to_uppercase().contains("OK") {
+                buffer.push_str(&String::from_utf8_lossy(&data));
+                // Check if the acknowledgement we requested has arrived
+                if has_ok_line(&buffer) {
                     return Ok(());
                 }
             }
@@ -544,6 +560,10 @@ impl<T: Transport> DeltaRobot<T> {
 
         let cmd = self.create_mv_command(axis_str, displacement);
 
+        // Leftover input (stale echoes, late acknowledgements) must not be
+        // mistaken for this sequence's acknowledgements.
+        self.transport.flush_input();
+
         // Ensure we are in relative mode for jog-style moves
         self.transport.write_data(b"G91 FEEDBACK:ok\n")?;
         self.wait_for_ok(2)?;
@@ -584,6 +604,8 @@ impl<T: Transport> DeltaRobot<T> {
     ///
     /// Returns an error if the homing command fails or times out (default 10s).
     pub fn home_xyz(&mut self) -> Result<()> {
+        // Do not let stale input acknowledge the homing command.
+        self.transport.flush_input();
         self.transport.write_data(b"G28 FEEDBACK:ok\n")?;
         self.wait_for_ok(10)?;
 
@@ -900,6 +922,18 @@ mod tests {
         assert!(!control.is_paused());
     }
 
+    #[test]
+    fn ok_matching_is_line_exact() {
+        assert!(has_ok_line("ok\n"));
+        assert!(has_ok_line("Ok\r\n"));
+        assert!(has_ok_line("some report line\nok\n"));
+        assert!(has_ok_line("ok")); // firmware without a trailing newline
+        assert!(!has_ok_line("G0 X10.0000 FEEDBACK:ok\n")); // echoed command
+        assert!(!has_ok_line("FEEDBACK:ok\n"));
+        assert!(!has_ok_line("okay\n"));
+        assert!(!has_ok_line(""));
+    }
+
     // --- Wire-contract characterization (through the mock transport) ---
 
     #[test]
@@ -933,6 +967,22 @@ mod tests {
         assert_eq!(robot.transport_ref().written_str(), "");
         let (x, _, _, _) = robot.get_position();
         assert!(x.abs() < 0.01);
+    }
+
+    #[test]
+    fn stale_input_is_flushed_before_a_command_sequence() {
+        // A leftover acknowledgement from a previous command sits in the
+        // input buffer; it must not shift this sequence's acknowledgements.
+        let mut mock = MockTransport::scripted(&["ok\n", "ok\n", "ok\n"]);
+        mock.pending.push_back(b"ok\n".to_vec());
+        let mut robot = DeltaRobot::with_transport(mock);
+        robot.move_axis(Axis::X, 5.0).unwrap();
+        assert_eq!(
+            robot.transport_ref().written_str(),
+            "G91 FEEDBACK:ok\nG0 X5.0000 FEEDBACK:ok\nG90 FEEDBACK:ok\n"
+        );
+        let (x, _, _, _) = robot.get_position();
+        assert!((x - 5.0).abs() < 0.01, "got {x}, want 5.0");
     }
 
     #[test]

@@ -5,7 +5,7 @@
 //! It handles G-code generation, safety limit enforcement, and synchronization
 //! with the physical hardware.
 
-use crate::serial::SerialCommunication;
+use crate::serial::{SerialCommunication, Transport};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -299,10 +299,12 @@ pub enum SeedOutcome {
 /// Interface for controlling a Delta X 2 robot.
 ///
 /// This struct manages state tracking (where the head is), G-code generation,
-/// and safety limit enforcement. It uses `SerialCommunication` to talk to the hardware.
-pub struct DeltaRobot {
-    /// The serial communication backend.
-    serial: SerialCommunication,
+/// and safety limit enforcement. It talks to the hardware through any
+/// [`Transport`] implementation — [`SerialCommunication`] in production, a
+/// scripted mock in tests.
+pub struct DeltaRobot<T: Transport = SerialCommunication> {
+    /// The byte-level transport towards the robot.
+    transport: T,
     /// Tracked X position in mm.
     actual_x: f32,
     /// Tracked Y position in mm.
@@ -326,13 +328,23 @@ impl Default for DeltaRobot {
 }
 
 impl DeltaRobot {
-    /// Creates a new `DeltaRobot` instance.
+    /// Creates a new `DeltaRobot` instance backed by a real serial port.
     ///
     /// The initial position is assumed to be at (0, 0, 0) (not homed).
     /// Default safety limits are applied until `set_limits` is called.
     pub fn new() -> Self {
+        Self::with_transport(SerialCommunication::new())
+    }
+}
+
+impl<T: Transport> DeltaRobot<T> {
+    /// Creates a `DeltaRobot` driving the given transport.
+    ///
+    /// Production code uses [`DeltaRobot::new`]; tests inject a scripted
+    /// mock here so no real serial port is ever opened.
+    pub fn with_transport(transport: T) -> Self {
         Self {
-            serial: SerialCommunication::new(),
+            transport,
             actual_x: 0.0,
             actual_y: 0.0,
             actual_z: 0.0,
@@ -348,6 +360,12 @@ impl DeltaRobot {
                 z: 100.0,
             },
         }
+    }
+
+    /// Gives tests access to the underlying (mock) transport.
+    #[cfg(test)]
+    fn transport_ref(&self) -> &T {
+        &self.transport
     }
 
     /// Sets the software safety limits for the robot's movement.
@@ -382,14 +400,14 @@ impl DeltaRobot {
     /// On handshake failure the port is closed again, so the device node is
     /// left free for a later reconnect attempt.
     pub fn connect(&mut self, port: &str, baud_rate: u32) -> Result<()> {
-        self.serial.open(port, baud_rate)?;
+        self.transport.open(port, baud_rate)?;
 
         match self.handshake() {
             Ok(()) => Ok(()),
             Err(e) => {
                 // Do not hold the OS handle on a device that failed the
                 // handshake — it may not be the robot at all.
-                self.serial.close();
+                self.transport.close();
                 Err(e.context(format!("Device on {} did not answer IsDelta", port)))
             }
         }
@@ -403,14 +421,14 @@ impl DeltaRobot {
     /// 2 seconds.
     fn handshake(&mut self) -> Result<()> {
         // Verify it's a Delta Robot by sending an identity query
-        self.serial.write_data(b"IsDelta\n")?;
+        self.transport.write_data(b"IsDelta\n")?;
 
         let mut response = String::new();
         let start = std::time::Instant::now();
 
         // Poll for response with a 2-second timeout
         while start.elapsed() < std::time::Duration::from_secs(2) {
-            if let Ok(data) = self.serial.read_data() {
+            if let Ok(data) = self.transport.read_data() {
                 response.push_str(&String::from_utf8_lossy(&data));
                 // Documentation says it returns 'YesDelta'
                 if response.to_uppercase().contains("YESDELTA") {
@@ -428,7 +446,15 @@ impl DeltaRobot {
     /// The logical position tracking is left untouched; a reconnect should
     /// be followed by homing before trusting any movement (see issue #9).
     pub fn disconnect(&mut self) {
-        self.serial.close();
+        self.transport.close();
+    }
+
+    /// Returns `true` while the transport towards the robot is open.
+    ///
+    /// This reflects the last known link state; a lost link is only
+    /// detected when a command fails on it.
+    pub fn is_connected(&self) -> bool {
+        self.transport.is_open()
     }
 
     /// Formats a G0 command string with the specified axis and displacement.
@@ -464,7 +490,7 @@ impl DeltaRobot {
         let start = std::time::Instant::now();
 
         while start.elapsed() < std::time::Duration::from_secs(timeout_secs) {
-            if let Ok(data) = self.serial.read_data() {
+            if let Ok(data) = self.transport.read_data() {
                 line.push_str(&String::from_utf8_lossy(&data));
                 // Check if the feedback we requested has arrived
                 if line.to_uppercase().contains("OK") {
@@ -519,15 +545,15 @@ impl DeltaRobot {
         let cmd = self.create_mv_command(axis_str, displacement);
 
         // Ensure we are in relative mode for jog-style moves
-        self.serial.write_data(b"G91 FEEDBACK:ok\n")?;
+        self.transport.write_data(b"G91 FEEDBACK:ok\n")?;
         self.wait_for_ok(2)?;
 
         // Execute the actual move
-        self.serial.write_data(cmd.as_bytes())?;
+        self.transport.write_data(cmd.as_bytes())?;
         self.wait_for_ok(5)?;
 
         // Switch back to absolute (the default state for most G-code apps)
-        self.serial.write_data(b"G90 FEEDBACK:ok\n")?;
+        self.transport.write_data(b"G90 FEEDBACK:ok\n")?;
         self.wait_for_ok(2)?;
 
         // Update our internal tracking of the robot's position
@@ -558,7 +584,7 @@ impl DeltaRobot {
     ///
     /// Returns an error if the homing command fails or times out (default 10s).
     pub fn home_xyz(&mut self) -> Result<()> {
-        self.serial.write_data(b"G28 FEEDBACK:ok\n")?;
+        self.transport.write_data(b"G28 FEEDBACK:ok\n")?;
         self.wait_for_ok(10)?;
 
         // Homing successful, reset logical coordinates
@@ -664,6 +690,88 @@ impl DeltaRobot {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
+
+    /// Scripted [`Transport`] for tests: each successful write releases the
+    /// next scripted response chunk, which the following reads return. No
+    /// real port is ever opened.
+    struct MockTransport {
+        /// Response chunks not yet released (one per future write).
+        script: VecDeque<Vec<u8>>,
+        /// Released chunks waiting to be read.
+        pending: VecDeque<Vec<u8>>,
+        /// Everything successfully written, concatenated.
+        written: Vec<u8>,
+        /// 1-based index of a write that must fail, if any.
+        fail_write_at: Option<usize>,
+        /// When set, every read fails as a lost link.
+        fail_reads: bool,
+        writes: usize,
+        open: bool,
+    }
+
+    impl MockTransport {
+        /// A transport that answers the nth write with the nth response.
+        fn scripted(responses: &[&str]) -> Self {
+            Self {
+                script: responses.iter().map(|r| r.as_bytes().to_vec()).collect(),
+                pending: VecDeque::new(),
+                written: Vec::new(),
+                fail_write_at: None,
+                fail_reads: false,
+                writes: 0,
+                open: true,
+            }
+        }
+
+        fn written_str(&self) -> String {
+            String::from_utf8(self.written.clone()).unwrap()
+        }
+    }
+
+    impl Transport for MockTransport {
+        fn open(&mut self, _port_name: &str, _baud_rate: u32) -> Result<()> {
+            self.open = true;
+            Ok(())
+        }
+
+        fn write_data(&mut self, data: &[u8]) -> Result<()> {
+            self.writes += 1;
+            if self.fail_write_at == Some(self.writes) {
+                return Err(anyhow::anyhow!("mock write failure"));
+            }
+            if !self.open {
+                return Err(anyhow::anyhow!("mock transport not open"));
+            }
+            self.written.extend_from_slice(data);
+            if let Some(response) = self.script.pop_front() {
+                self.pending.push_back(response);
+            }
+            Ok(())
+        }
+
+        fn read_data(&mut self) -> Result<Vec<u8>> {
+            if self.fail_reads {
+                return Err(anyhow::anyhow!("mock link lost"));
+            }
+            if !self.open {
+                return Err(anyhow::anyhow!("mock transport not open"));
+            }
+            Ok(self.pending.pop_front().unwrap_or_default())
+        }
+
+        fn flush_input(&mut self) {
+            self.pending.clear();
+        }
+
+        fn close(&mut self) {
+            self.open = false;
+        }
+
+        fn is_open(&self) -> bool {
+            self.open
+        }
+    }
 
     /// Software limits matching the shipped `config.toml`.
     fn test_limits() -> RobotConfig {
@@ -790,5 +898,56 @@ mod tests {
         assert!(control.is_paused());
         control.resume();
         assert!(!control.is_paused());
+    }
+
+    // --- Wire-contract characterization (through the mock transport) ---
+
+    #[test]
+    fn connect_performs_isdelta_handshake() {
+        let mut robot = DeltaRobot::with_transport(MockTransport::scripted(&["YesDelta\n"]));
+        robot.connect("/dev/mock", 115_200).unwrap();
+        assert_eq!(robot.transport_ref().written_str(), "IsDelta\n");
+        assert!(robot.is_connected());
+    }
+
+    #[test]
+    fn jog_sends_g91_move_g90_wire_sequence() {
+        let mut robot =
+            DeltaRobot::with_transport(MockTransport::scripted(&["ok\n", "ok\n", "ok\n"]));
+        robot.move_axis(Axis::X, 10.0).unwrap();
+        // The wire contract with the firmware, byte for byte.
+        assert_eq!(
+            robot.transport_ref().written_str(),
+            "G91 FEEDBACK:ok\nG0 X10.0000 FEEDBACK:ok\nG90 FEEDBACK:ok\n"
+        );
+        let (x, y, z, _) = robot.get_position();
+        assert!((x - 10.0).abs() < 0.01, "got {x}, want 10.0");
+        assert!(y.abs() < 0.01 && z.abs() < 0.01);
+    }
+
+    #[test]
+    fn out_of_limits_jog_sends_nothing() {
+        let mut robot = DeltaRobot::with_transport(MockTransport::scripted(&[]));
+        // Default limits are ±200 mm; 250 must be rejected before any I/O.
+        assert!(robot.move_axis(Axis::X, 250.0).is_err());
+        assert_eq!(robot.transport_ref().written_str(), "");
+        let (x, _, _, _) = robot.get_position();
+        assert!(x.abs() < 0.01);
+    }
+
+    #[test]
+    fn homing_sends_g28_and_resets_position() {
+        let mut robot =
+            DeltaRobot::with_transport(MockTransport::scripted(&["ok\n", "ok\n", "ok\n", "ok\n"]));
+        robot.move_axis(Axis::Z, -50.0).unwrap();
+        robot.home_xyz().unwrap();
+        assert!(
+            robot
+                .transport_ref()
+                .written_str()
+                .ends_with("G28 FEEDBACK:ok\n")
+        );
+        let (x, y, z, _) = robot.get_position();
+        assert!(x.abs() < 0.01 && y.abs() < 0.01 && z.abs() < 0.01);
     }
 }

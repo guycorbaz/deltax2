@@ -105,8 +105,16 @@ impl Default for RobotConfig {
     /// Provides default safety limits suitable for a basic Delta X 2 setup.
     fn default() -> Self {
         Self {
-            limit_min: Coord3D { x: -200.0, y: -200.0, z: -100.0 },
-            limit_max: Coord3D { x: 200.0, y: 200.0, z: 100.0 },
+            limit_min: Coord3D {
+                x: -200.0,
+                y: -200.0,
+                z: -100.0,
+            },
+            limit_max: Coord3D {
+                x: 200.0,
+                y: 200.0,
+                z: 100.0,
+            },
         }
     }
 }
@@ -116,7 +124,11 @@ impl Default for Plate {
     fn default() -> Self {
         Self {
             name: "Default Plate".to_string(),
-            plate_size: Coord3D { x: 500.0, y: 700.0, z: 40.0 },
+            plate_size: Coord3D {
+                x: 500.0,
+                y: 700.0,
+                z: 40.0,
+            },
             first_pot: Coord2D { x: 0.0, y: 0.0 },
             pot_distance: Coord2D { x: 10.0, y: 10.0 },
             nb_pot: IntCoord2D { x: 8, y: 12 },
@@ -126,7 +138,14 @@ impl Default for Plate {
 
 /// Enumerates the physical axes of the robot.
 #[derive(Debug, Clone, Copy)]
-pub enum Axis { X, Y, Z }
+pub enum Axis {
+    /// Horizontal X axis.
+    X,
+    /// Horizontal Y axis.
+    Y,
+    /// Vertical Z axis (0 at the homed top position, negative downwards).
+    Z,
+}
 
 /// Thread-safe flags used to pause or abort a running seeding job.
 ///
@@ -154,6 +173,12 @@ impl SeedingControl {
     pub fn reset(&self) {
         self.abort.store(false, Ordering::SeqCst);
         self.pause.store(false, Ordering::SeqCst);
+    }
+}
+
+impl Default for SeedingControl {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -189,6 +214,12 @@ pub struct DeltaRobot {
 
 // Note: X2 uses G28 for homing, G90/G91 for modes, and the FEEDBACK parameter for synchronization.
 
+impl Default for DeltaRobot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DeltaRobot {
     /// Creates a new `DeltaRobot` instance.
     ///
@@ -201,8 +232,16 @@ impl DeltaRobot {
             actual_y: 0.0,
             actual_z: 0.0,
             actual_cart: 0.0,
-            limit_min: Coord3D { x: -200.0, y: -200.0, z: -100.0 },
-            limit_max: Coord3D { x: 200.0, y: 200.0, z: 100.0 },
+            limit_min: Coord3D {
+                x: -200.0,
+                y: -200.0,
+                z: -100.0,
+            },
+            limit_max: Coord3D {
+                x: 200.0,
+                y: 200.0,
+                z: 100.0,
+            },
         }
     }
 
@@ -236,13 +275,13 @@ impl DeltaRobot {
     /// - The robot responds with something other than `YESDELTA`.
     pub fn connect(&mut self, port: &str, baud_rate: u32) -> Result<()> {
         self.serial.open(port, baud_rate)?;
-        
+
         // Verify it's a Delta Robot by sending an identity query
         self.serial.write_data(b"IsDelta\n")?;
-        
+
         let mut response = String::new();
         let start = std::time::Instant::now();
-        
+
         // Poll for response with a 2-second timeout
         while start.elapsed() < std::time::Duration::from_secs(2) {
             if let Ok(data) = self.serial.read_data() {
@@ -255,7 +294,10 @@ impl DeltaRobot {
             // Small sleep to prevent 100% CPU usage during polling
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        Err(anyhow::anyhow!("Device on {} did not respond correctly to IsDelta", port))
+        Err(anyhow::anyhow!(
+            "Device on {} did not respond correctly to IsDelta",
+            port
+        ))
     }
 
     /// Formats a G0 command string with the specified axis and displacement.
@@ -267,7 +309,11 @@ impl DeltaRobot {
     /// * `axis` - The axis label (e.g., "X").
     /// * `displacement` - The amount to move in mm.
     fn create_mv_command(&self, axis: &str, displacement: f32) -> String {
-        format!("G0 {}{:.4} FEEDBACK:ok\n", axis.to_uppercase(), displacement)
+        format!(
+            "G0 {}{:.4} FEEDBACK:ok\n",
+            axis.to_uppercase(),
+            displacement
+        )
     }
 
     /// Waits for the 'ok' string in the serial stream.
@@ -285,7 +331,7 @@ impl DeltaRobot {
     fn wait_for_ok(&mut self, timeout_secs: u64) -> Result<()> {
         let mut line = String::new();
         let start = std::time::Instant::now();
-        
+
         while start.elapsed() < std::time::Duration::from_secs(timeout_secs) {
             if let Ok(data) = self.serial.read_data() {
                 line.push_str(&String::from_utf8_lossy(&data));
@@ -331,30 +377,35 @@ impl DeltaRobot {
 
         // Safety check before sending anything to hardware
         if current_val + displacement < min || current_val + displacement > max {
-            return Err(anyhow::anyhow!("Movement out of safety limits ({:.2} to {:.2}) for axis {}", min, max, axis_str));
+            return Err(anyhow::anyhow!(
+                "Movement out of safety limits ({:.2} to {:.2}) for axis {}",
+                min,
+                max,
+                axis_str
+            ));
         }
-        
+
         let cmd = self.create_mv_command(axis_str, displacement);
-        
+
         // Ensure we are in relative mode for jog-style moves
         self.serial.write_data(b"G91 FEEDBACK:ok\n")?;
         self.wait_for_ok(2)?;
-        
+
         // Execute the actual move
         self.serial.write_data(cmd.as_bytes())?;
         self.wait_for_ok(5)?;
-        
+
         // Switch back to absolute (the default state for most G-code apps)
         self.serial.write_data(b"G90 FEEDBACK:ok\n")?;
         self.wait_for_ok(2)?;
-        
+
         // Update our internal tracking of the robot's position
         match axis {
             Axis::X => self.actual_x += displacement,
             Axis::Y => self.actual_y += displacement,
             Axis::Z => self.actual_z += displacement,
         }
-        
+
         Ok(())
     }
 
@@ -377,7 +428,7 @@ impl DeltaRobot {
     pub fn home_xyz(&mut self) -> Result<()> {
         self.serial.write_data(b"G28 FEEDBACK:ok\n")?;
         self.wait_for_ok(10)?;
-        
+
         // Homing successful, reset logical coordinates
         self.actual_x = 0.0;
         self.actual_y = 0.0;
@@ -428,7 +479,8 @@ impl DeltaRobot {
         for x in 0..plate.nb_pot.x {
             for y in 0..plate.nb_pot.y {
                 // Hold here while paused; a stop request also ends the pause wait.
-                while control.pause.load(Ordering::SeqCst) && !control.abort.load(Ordering::SeqCst) {
+                while control.pause.load(Ordering::SeqCst) && !control.abort.load(Ordering::SeqCst)
+                {
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 if control.abort.load(Ordering::SeqCst) {
@@ -462,6 +514,11 @@ impl DeltaRobot {
     ///
     /// A tuple containing (X, Y, Z, Cart) coordinates in mm.
     pub fn get_position(&self) -> (f32, f32, f32, f32) {
-        (self.actual_x, self.actual_y, self.actual_z, self.actual_cart)
+        (
+            self.actual_x,
+            self.actual_y,
+            self.actual_z,
+            self.actual_cart,
+        )
     }
 }

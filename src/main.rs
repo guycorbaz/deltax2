@@ -13,13 +13,13 @@
 //!   shared `SeedingControl` that the seeding loop checks between pots, so
 //!   they take effect even while the worker is busy running a job.
 
+use deltax2::SerialCommunication;
+use deltax2::robot::{Axis, Config, Coord3D, DeltaRobot, Plate, SeedOutcome, SeedingControl};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
-use std::sync::{mpsc, Arc};
-use deltax2::robot::{Axis, Config, Coord3D, DeltaRobot, Plate, SeedOutcome, SeedingControl};
-use deltax2::SerialCommunication;
+use std::sync::{Arc, mpsc};
 
 slint::include_modules!();
 
@@ -74,8 +74,11 @@ fn main() -> anyhow::Result<()> {
 
     // Populate the plate selection model in the UI.
     // This allows the user to choose between different tray types in the 'Confirm Plate' screen.
-    let plate_names: Vec<slint::SharedString> =
-        config.plates.iter().map(|p| p.name.clone().into()).collect();
+    let plate_names: Vec<slint::SharedString> = config
+        .plates
+        .iter()
+        .map(|p| p.name.clone().into())
+        .collect();
     let plate_names_model = Rc::new(slint::VecModel::from(plate_names));
     ui.set_plate_names(plate_names_model.into());
 
@@ -104,24 +107,36 @@ fn main() -> anyhow::Result<()> {
     // Each jog button click becomes a queued command for the worker.
 
     let t = tx.clone();
-    ui.on_move_x(move |d| { let _ = t.send(RobotCommand::MoveAxis(Axis::X, d)); });
+    ui.on_move_x(move |d| {
+        let _ = t.send(RobotCommand::MoveAxis(Axis::X, d));
+    });
 
     let t = tx.clone();
-    ui.on_move_y(move |d| { let _ = t.send(RobotCommand::MoveAxis(Axis::Y, d)); });
+    ui.on_move_y(move |d| {
+        let _ = t.send(RobotCommand::MoveAxis(Axis::Y, d));
+    });
 
     let t = tx.clone();
-    ui.on_move_z(move |d| { let _ = t.send(RobotCommand::MoveAxis(Axis::Z, d)); });
+    ui.on_move_z(move |d| {
+        let _ = t.send(RobotCommand::MoveAxis(Axis::Z, d));
+    });
 
     let t = tx.clone();
-    ui.on_move_cart(move |d| { let _ = t.send(RobotCommand::MoveCart(d)); });
+    ui.on_move_cart(move |d| {
+        let _ = t.send(RobotCommand::MoveCart(d));
+    });
 
     // --- Homing Handlers ---
 
     let t = tx.clone();
-    ui.on_home_xyz(move || { let _ = t.send(RobotCommand::HomeXyz); });
+    ui.on_home_xyz(move || {
+        let _ = t.send(RobotCommand::HomeXyz);
+    });
 
     let t = tx.clone();
-    ui.on_home_cart(move || { let _ = t.send(RobotCommand::HomeCart); });
+    ui.on_home_cart(move || {
+        let _ = t.send(RobotCommand::HomeCart);
+    });
 
     // --- System / Utility Handlers ---
 

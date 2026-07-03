@@ -4,9 +4,9 @@
 //! interactions, including opening ports, listing available ports, and reading/writing bytes.
 //! It abstracts the underlying `serialport` crate to provide a simpler interface for the robot.
 
+use anyhow::{Result, anyhow};
 use serialport::SerialPort;
 use std::time::Duration;
-use anyhow::{Result, anyhow};
 
 /// Handles raw serial communication with the robot hardware.
 ///
@@ -17,6 +17,12 @@ pub struct SerialCommunication {
     /// It is wrapped in an `Option` and a `Box` to support dynamic dispatch
     /// and allow for a "closed" state.
     port: Option<Box<dyn SerialPort>>,
+}
+
+impl Default for SerialCommunication {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SerialCommunication {
@@ -46,7 +52,7 @@ impl SerialCommunication {
         let port = serialport::new(port_name, baud_rate)
             .timeout(Duration::from_millis(10)) // Set a short timeout for non-blocking feel
             .open()?;
-            
+
         // Successfully opened, store the port boxed for trait-object compatibility
         self.port = Some(port);
         Ok(())
@@ -57,18 +63,18 @@ impl SerialCommunication {
     /// This is used to send G-code commands to the robot.
     ///
     /// # Arguments
-    /// 
+    ///
     /// * `data` - The byte slice to send over the wire.
     ///
     /// # Errors
     ///
-    /// Returns `Err` if the serial port is not currently open or if the 
+    /// Returns `Err` if the serial port is not currently open or if the
     /// underlying write operation fails.
     pub fn write_data(&mut self, data: &[u8]) -> Result<()> {
         if let Some(ref mut port) = self.port {
             // Write the entire buffer to the device
             port.write_all(data)?;
-            
+
             // Log for debugging purposes (this appears in console)
             println!("Serial write: {:?}", String::from_utf8_lossy(data));
             Ok(())

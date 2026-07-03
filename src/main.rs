@@ -368,16 +368,20 @@ fn set_status(ui: &slint::Weak<AppWindow>, msg: String, connected: Option<bool>)
     });
 }
 
-/// Pushes the robot's current logical position to the UI coordinate readouts.
+/// Pushes the robot's current logical position and connection state to the
+/// UI after each processed command, so a link lost during a command flips
+/// the connection LED without any extra plumbing.
 ///
 /// Safe to call from the worker thread.
 fn push_position(ui: &slint::Weak<AppWindow>, robot: &DeltaRobot) {
     let (x, y, z, cart) = robot.get_position();
+    let connected = robot.is_connected();
     let _ = ui.upgrade_in_event_loop(move |ui| {
         ui.set_head_x(format!("{:.3}", x).into());
         ui.set_head_y(format!("{:.3}", y).into());
         ui.set_head_z(format!("{:.3}", z).into());
         ui.set_head_cart(format!("{:.3}", cart).into());
+        ui.set_is_connected(connected);
     });
 }
 

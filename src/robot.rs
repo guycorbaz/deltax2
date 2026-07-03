@@ -456,12 +456,17 @@ impl<T: Transport> DeltaRobot<T> {
 
         // Poll for response with a 2-second timeout
         while start.elapsed() < std::time::Duration::from_secs(2) {
-            if let Ok(data) = self.transport.read_data() {
-                response.push_str(&String::from_utf8_lossy(&data));
-                // Documentation says it returns 'YesDelta'
-                if response.to_uppercase().contains("YESDELTA") {
-                    return Ok(());
+            match self.transport.read_data() {
+                Ok(data) => {
+                    response.push_str(&String::from_utf8_lossy(&data));
+                    // Documentation says it returns 'YesDelta'
+                    if response.to_uppercase().contains("YESDELTA") {
+                        return Ok(());
+                    }
                 }
+                // A read error means the link itself failed — no point
+                // polling until the timeout.
+                Err(e) => return Err(e.context("serial link lost during handshake")),
             }
             // Small sleep to prevent 100% CPU usage during polling
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -514,17 +519,29 @@ impl<T: Transport> DeltaRobot<T> {
     ///
     /// # Errors
     ///
-    /// Returns an error if the timeout is reached or if serial communication is lost.
+    /// Returns an error if the timeout is reached or if the serial link is
+    /// lost. A lost link (a read *error*, as opposed to an empty poll)
+    /// closes the port — so the connection state is truthful — and marks
+    /// the position as unknown.
     fn wait_for_ok(&mut self, timeout_secs: u64) -> Result<()> {
         let mut buffer = String::new();
         let start = std::time::Instant::now();
 
         while start.elapsed() < std::time::Duration::from_secs(timeout_secs) {
-            if let Ok(data) = self.transport.read_data() {
-                buffer.push_str(&String::from_utf8_lossy(&data));
-                // Check if the acknowledgement we requested has arrived
-                if has_ok_line(&buffer) {
-                    return Ok(());
+            match self.transport.read_data() {
+                Ok(data) => {
+                    if !data.is_empty() {
+                        buffer.push_str(&String::from_utf8_lossy(&data));
+                        // Check if the acknowledgement we requested has arrived
+                        if has_ok_line(&buffer) {
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.transport.close();
+                    self.desynchronized = true;
+                    return Err(e.context("serial link lost while waiting for 'ok'"));
                 }
             }
             // Sleep briefly to yield execution
@@ -1083,5 +1100,19 @@ mod tests {
         robot.move_axis(Axis::X, 1.0).unwrap();
         let (x, _, _, _) = robot.get_position();
         assert!((x - 1.0).abs() < 0.01, "got {x}, want 1.0");
+    }
+
+    #[test]
+    fn lost_link_closes_the_port_and_desynchronizes() {
+        // A read *error* (as opposed to an empty poll) is a lost link: the
+        // command must fail fast, the port must be closed so the UI
+        // connection state is truthful, and the position becomes unknown.
+        let mut mock = MockTransport::scripted(&[]);
+        mock.fail_reads = true;
+        let mut robot = DeltaRobot::with_transport(mock);
+
+        assert!(robot.move_axis(Axis::X, 1.0).is_err());
+        assert!(!robot.is_connected());
+        assert!(robot.is_desynchronized());
     }
 }

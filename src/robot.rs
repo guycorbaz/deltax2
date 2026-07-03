@@ -329,6 +329,10 @@ pub struct DeltaRobot<T: Transport = SerialCommunication> {
     limit_min: Coord3D,
     /// Upper movement boundaries.
     limit_max: Coord3D,
+    /// True when a failed command sequence left the tracked position or the
+    /// firmware positioning mode unreliable. While set, every move is
+    /// refused; a successful homing (`G28`) clears it.
+    desynchronized: bool,
 }
 
 // Note: X2 uses G28 for homing, G90/G91 for modes, and the FEEDBACK parameter for synchronization.
@@ -371,7 +375,17 @@ impl<T: Transport> DeltaRobot<T> {
                 y: 200.0,
                 z: 100.0,
             },
+            desynchronized: false,
         }
+    }
+
+    /// Returns `true` when a failed command sequence left the tracked
+    /// position or the firmware positioning mode unreliable.
+    ///
+    /// While desynchronized, every move is refused; a successful homing
+    /// ([`Self::home_xyz`]) clears the state.
+    pub fn is_desynchronized(&self) -> bool {
+        self.desynchronized
     }
 
     /// Gives tests access to the underlying (mock) transport.
@@ -537,10 +551,22 @@ impl<T: Transport> DeltaRobot<T> {
     /// # Errors
     ///
     /// Returns an error if:
+    /// - The robot state is desynchronized (homing required first).
     /// - The move exceeds safety boundaries.
     /// - Serial communication fails.
     /// - The robot fails to acknowledge any part of the command sequence.
+    ///
+    /// If the sequence fails after the first command was sent, the firmware
+    /// may be stuck in relative mode and the head may or may not have moved:
+    /// a best-effort `G90` restore is attempted, the state is marked
+    /// desynchronized, and homing is required before the next move.
     pub fn move_axis(&mut self, axis: Axis, displacement: f32) -> Result<()> {
+        if self.desynchronized {
+            return Err(anyhow::anyhow!(
+                "Robot state is desynchronized after a failed command — homing (G28) required before moving"
+            ));
+        }
+
         // Determine boundaries and current values based on the selected axis
         let (axis_str, current_val, min, max) = match axis {
             Axis::X => ("X", self.actual_x, self.limit_min.x, self.limit_max.x),
@@ -564,26 +590,45 @@ impl<T: Transport> DeltaRobot<T> {
         // mistaken for this sequence's acknowledgements.
         self.transport.flush_input();
 
-        // Ensure we are in relative mode for jog-style moves
-        self.transport.write_data(b"G91 FEEDBACK:ok\n")?;
-        self.wait_for_ok(2)?;
+        let sequence = (|| -> Result<()> {
+            // Ensure we are in relative mode for jog-style moves
+            self.transport.write_data(b"G91 FEEDBACK:ok\n")?;
+            self.wait_for_ok(2)?;
 
-        // Execute the actual move
-        self.transport.write_data(cmd.as_bytes())?;
-        self.wait_for_ok(5)?;
+            // Execute the actual move
+            self.transport.write_data(cmd.as_bytes())?;
+            self.wait_for_ok(5)?;
 
-        // Switch back to absolute (the default state for most G-code apps)
-        self.transport.write_data(b"G90 FEEDBACK:ok\n")?;
-        self.wait_for_ok(2)?;
+            // Switch back to absolute (the default state for most G-code apps)
+            self.transport.write_data(b"G90 FEEDBACK:ok\n")?;
+            self.wait_for_ok(2)?;
+            Ok(())
+        })();
 
-        // Update our internal tracking of the robot's position
-        match axis {
-            Axis::X => self.actual_x += displacement,
-            Axis::Y => self.actual_y += displacement,
-            Axis::Z => self.actual_z += displacement,
+        match sequence {
+            Ok(()) => {
+                // Update our internal tracking of the robot's position
+                match axis {
+                    Axis::X => self.actual_x += displacement,
+                    Axis::Y => self.actual_y += displacement,
+                    Axis::Z => self.actual_z += displacement,
+                }
+                Ok(())
+            }
+            Err(e) => {
+                // The sequence stopped partway: the firmware may be stuck in
+                // relative mode and the head may or may not have moved, so
+                // both the mode and the tracked position are unreliable.
+                // Best-effort attempt to restore absolute mode, then require
+                // homing before any further motion.
+                self.desynchronized = true;
+                let _ = self.transport.write_data(b"G90 FEEDBACK:ok\n");
+                let _ = self.wait_for_ok(2);
+                Err(e.context(
+                    "move failed mid-sequence; state desynchronized, homing (G28) required",
+                ))
+            }
         }
-
-        Ok(())
     }
 
     /// Updates the internal state for the rotation axis (cart).
@@ -607,12 +652,18 @@ impl<T: Transport> DeltaRobot<T> {
         // Do not let stale input acknowledge the homing command.
         self.transport.flush_input();
         self.transport.write_data(b"G28 FEEDBACK:ok\n")?;
-        self.wait_for_ok(10)?;
+        if let Err(e) = self.wait_for_ok(10) {
+            // An unacknowledged homing leaves the position unknown.
+            self.desynchronized = true;
+            return Err(e.context("homing failed; state desynchronized"));
+        }
 
-        // Homing successful, reset logical coordinates
+        // Homing successful: the head sits at the mechanical origin, so the
+        // logical coordinates are trustworthy again.
         self.actual_x = 0.0;
         self.actual_y = 0.0;
         self.actual_z = 0.0;
+        self.desynchronized = false;
         Ok(())
     }
 
@@ -999,5 +1050,38 @@ mod tests {
         );
         let (x, y, z, _) = robot.get_position();
         assert!(x.abs() < 0.01 && y.abs() < 0.01 && z.abs() < 0.01);
+    }
+
+    #[test]
+    fn failed_mid_sequence_desynchronizes_until_homed() {
+        let mut mock = MockTransport::scripted(&["ok\n", "ok\n", "ok\n", "ok\n", "ok\n", "ok\n"]);
+        mock.fail_write_at = Some(2); // the G0 write fails, after G91 succeeded
+        let mut robot = DeltaRobot::with_transport(mock);
+
+        // The move fails and the state is marked desynchronized; the
+        // tracked position must not have changed.
+        assert!(robot.move_axis(Axis::X, 10.0).is_err());
+        assert!(robot.is_desynchronized());
+        let (x, _, _, _) = robot.get_position();
+        assert!(x.abs() < 0.01);
+        // A best-effort G90 restore was attempted after the failure.
+        assert!(
+            robot
+                .transport_ref()
+                .written_str()
+                .ends_with("G90 FEEDBACK:ok\n")
+        );
+
+        // Further moves are refused without any I/O until homing.
+        let writes_before = robot.transport_ref().writes;
+        assert!(robot.move_axis(Axis::X, 1.0).is_err());
+        assert_eq!(robot.transport_ref().writes, writes_before);
+
+        // A successful homing recovers the state and moves work again.
+        robot.home_xyz().unwrap();
+        assert!(!robot.is_desynchronized());
+        robot.move_axis(Axis::X, 1.0).unwrap();
+        let (x, _, _, _) = robot.get_position();
+        assert!((x - 1.0).abs() < 0.01, "got {x}, want 1.0");
     }
 }

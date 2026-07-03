@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Control application for the Delta X 2 robot (a delta-arm seeding robot), written in Rust with a Slint UI. Ported from a C++/Qt codebase. Deployment target is a Raspberry Pi 5 with a 7'' touch screen (fixed 800x480 window), communicating with the robot firmware over a serial port using G-code.
+Control application for the Delta X 2 robot (a delta-arm seeding robot), written in Rust with a Slint UI. Ported from a C++/Qt codebase. Deployment target is a Raspberry Pi (3, 4 or 5) with the official 7'' touch display (fixed 800x480 window), communicating with the robot firmware over a serial port using G-code.
 
 Daily operation is **touch-only** (kiosk mode, no keyboard/mouse, stdout invisible): anything the operator needs at runtime — error messages, diagnostics, reconnect, stop/pause — must be available in the UI with finger-sized touch targets. Administrative tasks (editing `config.toml`, deployment, console diagnostics) are done over SSH or a local terminal, so keyboard-driven setup is acceptable there.
 
@@ -38,11 +38,11 @@ The seeding flow is two-step in the UI: `plate-selected` only records the chosen
 
 ## Documentation
 
-The user/administrator manual lives in `documentation/`: `manual.tex` (main file + title page), `preamble.tex` (packages, colors, box/listing styles), and one file per chapter in `chapters/`. Build with `latexmk -pdf manual.tex` (or `pdflatex` twice) inside `documentation/`; keep the committed `manual.pdf` in sync after edits. The former `deltax2_gcode.md` and `raspberry_pi.md` were absorbed into `chapters/gcode.tex` and `chapters/raspberrypi.tex` — update those, not markdown files.
+The user/administrator manual lives in `docs/`: `manual.tex` (main file + title page), `preamble.tex` (packages, colors, box/listing styles), and one file per chapter in `chapters/`. Build with `latexmk -pdf manual.tex` (or `pdflatex` twice) inside `docs/`; keep the committed `manual.pdf` in sync after edits. The former `deltax2_gcode.md` and `raspberry_pi.md` were absorbed into `chapters/gcode.tex` and `chapters/raspberrypi.tex` — update those, not markdown files.
 
 ## Robot Protocol Essentials
 
-Full reference in `documentation/chapters/gcode.tex` (manual Appendix A).
+Full reference in `docs/chapters/gcode.tex` (manual Appendix A).
 
 - Connection handshake: send `IsDelta\n`, expect `YesDelta` (checked case-insensitively) within 2s.
 - Synchronization: every command is sent with a `FEEDBACK:ok` suffix and the code blocks in `wait_for_ok()` until `ok` arrives (per-command timeouts: 2s for mode switches, 5s for moves, 10s for homing).

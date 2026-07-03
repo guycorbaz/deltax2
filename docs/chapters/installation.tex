@@ -10,8 +10,17 @@ subject of Chapter~\ref{ch:rpi}.
 \section{Prerequisites}
 
 \begin{itemize}[itemsep=2pt]
-  \item \textbf{Rust toolchain} --- install via \url{https://rustup.rs}. The project
-        uses Rust edition 2024; any recent stable toolchain works.
+  \item \textbf{Target hardware} --- a Raspberry~Pi 3, 4 or 5 running a
+        \emph{64-bit} operating system (the build target is
+        \code{aarch64-unknown-linux-gnu}), fitted with the official
+        Raspberry~Pi Touch Display (7\,inch, $800 \times 480$). The Pi~3 is
+        the performance floor. Release builds are compiled natively on the
+        Pi; there is no cross-compilation setup.
+  \item \textbf{Rust toolchain} --- install via \url{https://rustup.rs}; distribution
+        packages are usually too old. The project uses Rust edition 2024 and
+        declares its minimum supported Rust version in \code{Cargo.toml}
+        (\code{rust-version}, currently 1.90, driven by the dependency tree);
+        \code{cargo} refuses to build with an older toolchain.
   \item \textbf{Build dependencies} --- a C compiler and the graphics/input
         development libraries required by Slint. On Debian-based systems:
 \begin{lstlisting}[language=bash]
@@ -35,6 +44,14 @@ $ cargo build --release
 \end{lstlisting}
 
 The binary is produced at \code{target/release/deltax2}.
+
+For anyone modifying the source: the project has no CI, so the following
+quality gate must pass locally before a change is considered done:
+
+\begin{lstlisting}[language=bash]
+$ cargo build && cargo clippy --all-targets -- -D warnings \
+      && cargo fmt --check && cargo test
+\end{lstlisting}
 
 \begin{note}
 The application reads \code{config.toml} from its \emph{current working directory}

@@ -9,16 +9,18 @@
 //!   port directly. Callbacks send `RobotCommand`s over an mpsc channel.
 //! - The worker thread owns `DeltaRobot` and processes commands one at a
 //!   time. It pushes results back to the UI with `Weak::upgrade_in_event_loop`.
-//! - Stop/pause/continue bypass the channel: they set atomic flags in a
-//!   shared `SeedingControl` that the seeding loop checks between pots, so
-//!   they take effect even while the worker is busy running a job.
+//! - Stop/pause/continue bypass the channel: they drive a shared
+//!   `SeedingControl` that the seeding loop checks between pots, so they
+//!   take effect even while the worker is busy running a job. Every queued
+//!   job carries an increasing id and a stop records the id it targets
+//!   (abort watermark), so a stop can neither be erased while the job still
+//!   waits in the queue nor leak into a later job.
 
 use deltax2::SerialCommunication;
 use deltax2::robot::{Axis, Config, Coord3D, DeltaRobot, Plate, SeedOutcome, SeedingControl};
 use slint::ComponentHandle;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, mpsc};
 
 slint::include_modules!();
@@ -38,8 +40,10 @@ enum RobotCommand {
     HomeXyz,
     /// Reset the rotation axis state.
     HomeCart,
-    /// Run the automated seeding sequence for the given plate.
-    SeedPlate(Plate),
+    /// Run the automated seeding sequence for the given plate. The id was
+    /// assigned by the UI at queue time and is matched against the abort
+    /// watermark in `SeedingControl`.
+    SeedPlate { plate: Plate, job_id: u64 },
 }
 
 /// Application entry point.
@@ -187,30 +191,40 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Monotonic id of the last queued seeding job. Lives on the UI thread
+    // only; the worker learns the id through the SeedPlate command.
+    let last_job_id: Rc<Cell<u64>> = Rc::new(Cell::new(0));
+
     let sel = selected_plate.clone();
     let t = tx.clone();
     let uh = ui.as_weak();
+    let job = last_job_id.clone();
     ui.on_start_seeding(move || {
         let plate = sel.borrow().clone();
         if let Some(plate) = plate {
             if let Some(ui) = uh.upgrade() {
                 ui.set_seeding_progress("Starting...".into());
             }
-            let _ = t.send(RobotCommand::SeedPlate(plate));
+            let job_id = job.get() + 1;
+            job.set(job_id);
+            let _ = t.send(RobotCommand::SeedPlate { plate, job_id });
         } else if let Some(ui) = uh.upgrade() {
             // Should not happen through the normal flow, but guard anyway.
             ui.set_status_text("No plate selected".into());
         }
     });
 
-    // Stop/pause/continue write the shared flags directly instead of sending
-    // commands: the worker is busy inside seed_plate at this point and would
-    // not see a queued command until the job ended.
+    // Stop/pause/continue drive the shared control directly instead of
+    // sending commands: the worker is busy inside seed_plate at this point
+    // and would not see a queued command until the job ended.
 
     let c = control.clone();
     let uh = ui.as_weak();
+    let job = last_job_id.clone();
     ui.on_stop_seeding(move || {
-        c.abort.store(true, Ordering::SeqCst);
+        // Abort the last queued job — whether it is already running or
+        // still waiting in the command queue.
+        c.request_abort(job.get());
         if let Some(ui) = uh.upgrade() {
             ui.set_status_text("Stopping...".into());
         }
@@ -219,7 +233,7 @@ fn main() -> anyhow::Result<()> {
     let c = control.clone();
     let uh = ui.as_weak();
     ui.on_pause_seeding(move || {
-        c.pause.store(true, Ordering::SeqCst);
+        c.request_pause();
         if let Some(ui) = uh.upgrade() {
             ui.set_status_text("Seeding paused".into());
         }
@@ -228,7 +242,7 @@ fn main() -> anyhow::Result<()> {
     let c = control.clone();
     let uh = ui.as_weak();
     ui.on_continue_seeding(move || {
-        c.pause.store(false, Ordering::SeqCst);
+        c.resume();
         if let Some(ui) = uh.upgrade() {
             ui.set_status_text("Seeding resumed".into());
         }
@@ -301,15 +315,16 @@ fn spawn_robot_worker(
                     push_position(&ui, &robot);
                 }
 
-                RobotCommand::SeedPlate(plate) => {
-                    // Clear any stop/pause left over from a previous job.
-                    // Done here (not when the UI queues the job) so a stop
-                    // aimed at a still-running job cannot be erased early.
-                    control.reset();
+                RobotCommand::SeedPlate { plate, job_id } => {
+                    // Clear a pause left over from a previous job. A stop
+                    // needs no clearing: the abort watermark only affects
+                    // job ids at or below it, so a stop registered for this
+                    // very job (while it waited in the queue) still holds.
+                    control.begin_job();
                     set_status(&ui, format!("Seeding plate: {}", plate.name), None);
 
                     let progress_ui = ui.clone();
-                    let result = robot.seed_plate(&plate, &control, move |done, total| {
+                    let result = robot.seed_plate(&plate, job_id, &control, move |done, total| {
                         let _ = progress_ui.upgrade_in_event_loop(move |ui| {
                             ui.set_seeding_progress(format!("Pot {} / {}", done, total).into());
                         });

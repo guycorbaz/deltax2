@@ -8,7 +8,7 @@
 use crate::serial::SerialCommunication;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Represents a 2D coordinate (X, Y).
 /// Typically used for pot locations or planar movements.
@@ -217,31 +217,66 @@ pub enum Axis {
     Z,
 }
 
-/// Thread-safe flags used to pause or abort a running seeding job.
+/// Thread-safe controls used to pause or abort a seeding job.
 ///
-/// The UI thread sets these flags directly (not via the command channel),
-/// so a stop request takes effect even while the worker thread is busy
-/// executing the seeding loop.
+/// The UI thread drives these directly (not via the command channel), so a
+/// stop request takes effect even while the worker thread is busy executing
+/// the seeding loop.
+///
+/// Abort uses a job-id watermark instead of a resettable flag: the UI
+/// assigns every queued job an increasing id, and a stop request records
+/// the id it targets. A job aborts when its id is at or below the
+/// watermark. This way a stop aimed at a job still waiting in the command
+/// queue cannot be erased when the worker dequeues it, and a stop aimed at
+/// a finished job cannot leak into the next one.
 pub struct SeedingControl {
-    /// When set, the seeding loop terminates before the next pot.
-    pub abort: AtomicBool,
+    /// Highest job id a stop has been requested for (0 = none).
+    abort_up_to: AtomicU64,
     /// When set, the seeding loop waits before the next pot until cleared.
-    pub pause: AtomicBool,
+    pause: AtomicBool,
 }
 
 impl SeedingControl {
-    /// Creates a new control block with both flags cleared.
+    /// Creates a new control block: nothing aborted, not paused.
     pub fn new() -> Self {
         Self {
-            abort: AtomicBool::new(false),
+            abort_up_to: AtomicU64::new(0),
             pause: AtomicBool::new(false),
         }
     }
 
-    /// Clears both flags. Called by the worker before starting a new job so
-    /// that a stop request from a previous job cannot leak into the next one.
-    pub fn reset(&self) {
-        self.abort.store(false, Ordering::SeqCst);
+    /// Requests the abort of `job_id` and every job queued before it.
+    ///
+    /// The watermark only ever moves forward, so concurrent stop requests
+    /// cannot lower it.
+    pub fn request_abort(&self, job_id: u64) {
+        self.abort_up_to.fetch_max(job_id, Ordering::SeqCst);
+    }
+
+    /// Returns `true` if the job with `job_id` should stop.
+    pub fn should_abort(&self, job_id: u64) -> bool {
+        self.abort_up_to.load(Ordering::SeqCst) >= job_id
+    }
+
+    /// Suspends the seeding loop before the next pot.
+    pub fn request_pause(&self) {
+        self.pause.store(true, Ordering::SeqCst);
+    }
+
+    /// Resumes a paused seeding loop.
+    pub fn resume(&self) {
+        self.pause.store(false, Ordering::SeqCst);
+    }
+
+    /// Returns `true` if a pause is currently requested.
+    pub fn is_paused(&self) -> bool {
+        self.pause.load(Ordering::SeqCst)
+    }
+
+    /// Called by the worker when it dequeues a job: clears a pause left
+    /// over from a previous job. The abort watermark needs no clearing —
+    /// it only affects jobs with ids at or below it.
+    pub fn begin_job(&self) {
         self.pause.store(false, Ordering::SeqCst);
     }
 }
@@ -547,16 +582,17 @@ impl DeltaRobot {
     /// It homes the robot first, then iterates through every pot position
     /// defined in the `Plate` structure, calling `seed_pot` for each.
     ///
-    /// The loop is cooperative: between pots it honors the `pause` and
-    /// `abort` flags in `control`, and reports progress through the
-    /// `progress` callback. This method blocks for the duration of the job
-    /// and is intended to run on the robot worker thread, with the flags
-    /// set from the UI thread.
+    /// The loop is cooperative: between pots it honors the pause state and
+    /// the abort watermark in `control` (see [`SeedingControl`]), and
+    /// reports progress through the `progress` callback. This method blocks
+    /// for the duration of the job and is intended to run on the robot
+    /// worker thread, with the controls driven from the UI thread.
     ///
     /// # Arguments
     ///
     /// * `plate` - The plate geometry definition.
-    /// * `control` - Shared pause/abort flags checked before each pot.
+    /// * `job_id` - The id the UI assigned to this job when queuing it.
+    /// * `control` - Shared pause/abort controls checked before each pot.
     /// * `progress` - Called after each pot with (pots done, total pots).
     ///
     /// # Errors
@@ -566,6 +602,7 @@ impl DeltaRobot {
     pub fn seed_plate(
         &mut self,
         plate: &Plate,
+        job_id: u64,
         control: &SeedingControl,
         mut progress: impl FnMut(i32, i32),
     ) -> Result<SeedOutcome> {
@@ -579,11 +616,10 @@ impl DeltaRobot {
         for x in 0..plate.nb_pot.x {
             for y in 0..plate.nb_pot.y {
                 // Hold here while paused; a stop request also ends the pause wait.
-                while control.pause.load(Ordering::SeqCst) && !control.abort.load(Ordering::SeqCst)
-                {
+                while control.is_paused() && !control.should_abort(job_id) {
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
-                if control.abort.load(Ordering::SeqCst) {
+                if control.should_abort(job_id) {
                     return Ok(SeedOutcome::Aborted);
                 }
 
@@ -703,5 +739,56 @@ mod tests {
         let mut plate = test_plate();
         plate.plate_size.z = 0.0;
         assert!(plate.validate(&test_limits()).is_err());
+    }
+
+    #[test]
+    fn fresh_control_neither_aborts_nor_pauses() {
+        let control = SeedingControl::new();
+        assert!(!control.should_abort(1));
+        assert!(!control.is_paused());
+    }
+
+    #[test]
+    fn abort_targets_its_job_and_earlier_ones() {
+        let control = SeedingControl::new();
+        control.request_abort(2);
+        assert!(control.should_abort(1));
+        assert!(control.should_abort(2));
+        assert!(!control.should_abort(3));
+    }
+
+    #[test]
+    fn stop_on_queued_job_survives_dequeue() {
+        // Regression for the race where a stop pressed while the job was
+        // still in the command queue was erased at dequeue time.
+        let control = SeedingControl::new();
+        control.request_abort(1); // UI: stop pressed before the worker dequeues
+        control.begin_job(); // worker: dequeues job 1
+        assert!(control.should_abort(1));
+    }
+
+    #[test]
+    fn abort_watermark_never_moves_backwards() {
+        let control = SeedingControl::new();
+        control.request_abort(5);
+        control.request_abort(3);
+        assert!(control.should_abort(5));
+    }
+
+    #[test]
+    fn begin_job_clears_leftover_pause() {
+        let control = SeedingControl::new();
+        control.request_pause();
+        control.begin_job();
+        assert!(!control.is_paused());
+    }
+
+    #[test]
+    fn pause_and_resume_roundtrip() {
+        let control = SeedingControl::new();
+        control.request_pause();
+        assert!(control.is_paused());
+        control.resume();
+        assert!(!control.is_paused());
     }
 }

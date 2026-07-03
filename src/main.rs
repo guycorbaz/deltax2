@@ -72,13 +72,27 @@ fn main() -> anyhow::Result<()> {
         ui.set_kiosk_mode(true);
     }
 
+    // Validate the plate geometry against the software limits up front: a
+    // bad config.toml entry must surface at startup, not at pot 47 of a
+    // seeding job. Invalid plates are excluded from the selection list so a
+    // job can never start on one.
+    let mut plates: Vec<Plate> = Vec::new();
+    let mut config_errors: Vec<String> = Vec::new();
+    for plate in &config.plates {
+        match plate.validate(&config.robot) {
+            Ok(()) => plates.push(plate.clone()),
+            Err(e) => config_errors.push(e),
+        }
+    }
+    let plates = Rc::new(plates);
+    for error in &config_errors {
+        println!("Config error: {}", error);
+    }
+
     // Populate the plate selection model in the UI.
     // This allows the user to choose between different tray types in the 'Confirm Plate' screen.
-    let plate_names: Vec<slint::SharedString> = config
-        .plates
-        .iter()
-        .map(|p| p.name.clone().into())
-        .collect();
+    let plate_names: Vec<slint::SharedString> =
+        plates.iter().map(|p| p.name.clone().into()).collect();
     let plate_names_model = Rc::new(slint::VecModel::from(plate_names));
     ui.set_plate_names(plate_names_model.into());
 
@@ -96,7 +110,14 @@ fn main() -> anyhow::Result<()> {
 
     // Kick off the initial connection asynchronously. The UI shows
     // "Connecting..." meanwhile instead of freezing for the handshake timeout.
-    ui.set_status_text("Connecting...".into());
+    // A config error takes precedence in the status bar so the operator sees
+    // it at least until the connection result overwrites it (a persistent
+    // error surface is tracked in issue #8).
+    if let Some(error) = config_errors.first() {
+        ui.set_status_text(format!("Config error: {}", error).into());
+    } else {
+        ui.set_status_text("Connecting...".into());
+    }
     ui.set_is_connected(false);
     let _ = tx.send(RobotCommand::Connect {
         port: config.serial.port.clone(),
@@ -153,10 +174,12 @@ fn main() -> anyhow::Result<()> {
     let selected_plate: Rc<RefCell<Option<Plate>>> = Rc::new(RefCell::new(None));
 
     let sel = selected_plate.clone();
-    let cfg = config.clone();
+    let valid_plates = plates.clone();
     let uh = ui.as_weak();
     ui.on_plate_selected(move |id| {
-        if let Some(plate) = cfg.plates.get(id as usize) {
+        // Index into the validated list backing the UI model, not the raw
+        // config, so the indices always line up with what is displayed.
+        if let Some(plate) = valid_plates.get(id as usize) {
             *sel.borrow_mut() = Some(plate.clone());
             if let Some(ui) = uh.upgrade() {
                 ui.set_status_text(format!("Selected plate: {}", plate.name).into());

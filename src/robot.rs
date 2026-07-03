@@ -136,6 +136,76 @@ impl Default for Plate {
     }
 }
 
+impl Plate {
+    /// Checks that the plate geometry is coherent and that every pot
+    /// position lies within the robot's software limits.
+    ///
+    /// Intended to run right after loading `config.toml`, so that a bad
+    /// entry surfaces at startup instead of in the middle of a seeding job.
+    /// Pot positions decrease from `first_pot` along both axes, so checking
+    /// the first and the last pot covers the whole grid.
+    ///
+    /// # Arguments
+    ///
+    /// * `limits` - The robot's software limits the pot positions must respect.
+    ///
+    /// # Errors
+    ///
+    /// Returns an operator-readable description of the first problem found.
+    pub fn validate(&self, limits: &RobotConfig) -> Result<(), String> {
+        if self.nb_pot.x < 1 || self.nb_pot.y < 1 {
+            return Err(format!(
+                "plate '{}': pot grid must be at least 1x1 (got {}x{})",
+                self.name, self.nb_pot.x, self.nb_pot.y
+            ));
+        }
+        if self.plate_size.x <= 0.0 || self.plate_size.y <= 0.0 || self.plate_size.z <= 0.0 {
+            return Err(format!(
+                "plate '{}': plate_size must be positive",
+                self.name
+            ));
+        }
+        // A spacing is only meaningful (and required) when there is more
+        // than one pot along that axis.
+        if (self.nb_pot.x > 1 && self.pot_distance.x <= 0.0)
+            || (self.nb_pot.y > 1 && self.pot_distance.y <= 0.0)
+        {
+            return Err(format!(
+                "plate '{}': pot_distance must be positive",
+                self.name
+            ));
+        }
+
+        let last_x = self.first_pot.x - (self.nb_pot.x - 1) as f32 * self.pot_distance.x;
+        let last_y = self.first_pot.y - (self.nb_pot.y - 1) as f32 * self.pot_distance.y;
+        let checks = [
+            (
+                "X",
+                self.first_pot.x,
+                limits.limit_min.x,
+                limits.limit_max.x,
+            ),
+            ("X", last_x, limits.limit_min.x, limits.limit_max.x),
+            (
+                "Y",
+                self.first_pot.y,
+                limits.limit_min.y,
+                limits.limit_max.y,
+            ),
+            ("Y", last_y, limits.limit_min.y, limits.limit_max.y),
+        ];
+        for (axis, value, min, max) in checks {
+            if value < min || value > max {
+                return Err(format!(
+                    "plate '{}': pot position {}={:.1} is outside the software limits [{:.1}, {:.1}]",
+                    self.name, axis, value, min, max
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Enumerates the physical axes of the robot.
 #[derive(Debug, Clone, Copy)]
 pub enum Axis {
@@ -551,5 +621,87 @@ impl DeltaRobot {
             self.actual_z,
             self.actual_cart,
         )
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    /// Software limits matching the shipped `config.toml`.
+    fn test_limits() -> RobotConfig {
+        toml::from_str(
+            r#"
+            limit_min = { x = -160.0, y = -160.0, z = -200.0 }
+            limit_max = { x = 160.0, y = 160.0, z = 0.0 }
+            "#,
+        )
+        .unwrap()
+    }
+
+    /// The "77pots" plate from the shipped `config.toml`.
+    fn test_plate() -> Plate {
+        toml::from_str(
+            r#"
+            name = "77pots"
+            plate_size = { x = 500, y = 700, z = 40 }
+            first_pot = { x = 7, y = 24 }
+            pot_distance = { x = 10, y = 12 }
+            nb_pot = { x = 7, y = 11 }
+            "#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn valid_plate_passes() {
+        // Extremes, computed by hand: last pot X = 7 - 6*10 = -53,
+        // last pot Y = 24 - 10*12 = -96 — all within [-160, 160].
+        assert!(test_plate().validate(&test_limits()).is_ok());
+    }
+
+    #[test]
+    fn zero_pot_grid_is_rejected() {
+        let mut plate = test_plate();
+        plate.nb_pot.x = 0;
+        assert!(plate.validate(&test_limits()).is_err());
+    }
+
+    #[test]
+    fn negative_pot_distance_is_rejected() {
+        let mut plate = test_plate();
+        plate.pot_distance.y = -12.0;
+        assert!(plate.validate(&test_limits()).is_err());
+    }
+
+    #[test]
+    fn single_pot_needs_no_distance() {
+        let mut plate = test_plate();
+        plate.nb_pot = IntCoord2D { x: 1, y: 1 };
+        plate.pot_distance = Coord2D { x: 0.0, y: 0.0 };
+        assert!(plate.validate(&test_limits()).is_ok());
+    }
+
+    #[test]
+    fn first_pot_outside_limits_is_rejected() {
+        let mut plate = test_plate();
+        plate.first_pot.x = 200.0; // beyond limit_max.x = 160
+        assert!(plate.validate(&test_limits()).is_err());
+    }
+
+    #[test]
+    fn last_pot_outside_limits_is_rejected() {
+        let mut plate = test_plate();
+        // 7 columns spaced 30 mm: last pot X = 7 - 6*30 = -173 < -160.
+        plate.pot_distance.x = 30.0;
+        assert!(plate.validate(&test_limits()).is_err());
+    }
+
+    #[test]
+    fn zero_plate_size_is_rejected() {
+        let mut plate = test_plate();
+        plate.plate_size.z = 0.0;
+        assert!(plate.validate(&test_limits()).is_err());
     }
 }

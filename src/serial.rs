@@ -58,6 +58,24 @@ impl SerialCommunication {
         Ok(())
     }
 
+    /// Closes the serial port, releasing the OS handle.
+    ///
+    /// Safe to call when the port is already closed. After this call the
+    /// device node is free again (important before re-opening on reconnect,
+    /// or after a failed handshake).
+    pub fn close(&mut self) {
+        self.port = None;
+    }
+
+    /// Returns `true` if a serial port is currently open.
+    ///
+    /// Note that this only reflects whether [`Self::open`] succeeded; a
+    /// device that was unplugged afterwards still reports `true` until the
+    /// next read/write fails.
+    pub fn is_open(&self) -> bool {
+        self.port.is_some()
+    }
+
     /// Writes a slice of bytes to the serial port.
     ///
     /// This is used to send G-code commands to the robot.

@@ -273,9 +273,30 @@ impl DeltaRobot {
     /// - The serial port cannot be opened.
     /// - The robot does not respond within 2 seconds.
     /// - The robot responds with something other than `YESDELTA`.
+    ///
+    /// On handshake failure the port is closed again, so the device node is
+    /// left free for a later reconnect attempt.
     pub fn connect(&mut self, port: &str, baud_rate: u32) -> Result<()> {
         self.serial.open(port, baud_rate)?;
 
+        match self.handshake() {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                // Do not hold the OS handle on a device that failed the
+                // handshake — it may not be the robot at all.
+                self.serial.close();
+                Err(e.context(format!("Device on {} did not answer IsDelta", port)))
+            }
+        }
+    }
+
+    /// Sends the `IsDelta` identity query and waits for the `YesDelta` answer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails or no valid answer arrives within
+    /// 2 seconds.
+    fn handshake(&mut self) -> Result<()> {
         // Verify it's a Delta Robot by sending an identity query
         self.serial.write_data(b"IsDelta\n")?;
 
@@ -294,10 +315,15 @@ impl DeltaRobot {
             // Small sleep to prevent 100% CPU usage during polling
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        Err(anyhow::anyhow!(
-            "Device on {} did not respond correctly to IsDelta",
-            port
-        ))
+        Err(anyhow::anyhow!("no YesDelta response within 2s"))
+    }
+
+    /// Disconnects from the robot, closing the serial port.
+    ///
+    /// The logical position tracking is left untouched; a reconnect should
+    /// be followed by homing before trusting any movement (see issue #9).
+    pub fn disconnect(&mut self) {
+        self.serial.close();
     }
 
     /// Formats a G0 command string with the specified axis and displacement.

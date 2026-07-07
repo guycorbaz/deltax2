@@ -320,13 +320,16 @@ export component CalibrationScreen inherits Rectangle {
         }
     }
 
-    // --- Navigation Footer ---
-    // Global homing lives here, clearly labeled, so it can no longer be mistaken
-    // for a per-axis action inside an axis pad (#16). G28 homes all axes to the top.
+    // --- Footer ---
+    // "Home all (G28)" is a motion action, "Ok" is navigation. They are kept
+    // apart so the homing button is not mistaken for part of the Ok/leave
+    // control: Home all sits in the bottom-left corner, Ok stays centered like
+    // every other screen's footer. Global homing is clearly labeled so it is
+    // not read as a per-axis action either (#16).
     Button {
-        x: 80px;
+        x: 20px;
         y: parent.height - self.height - 15px;
-        width: 220px;
+        width: 200px;
         height: 60px;
         icon: @image-url("assets/icons/home.svg");
         text: @tr("Home all (G28)");

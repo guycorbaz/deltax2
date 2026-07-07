@@ -123,44 +123,54 @@ fn main() -> anyhow::Result<()> {
         ui.set_status_text("Connecting...".into());
     }
     ui.set_is_connected(false);
-    let _ = tx.send(RobotCommand::Connect {
-        port: config.serial.port.clone(),
-        baud_rate: config.serial.baud_rate,
-    });
+    dispatch(
+        &tx,
+        RobotCommand::Connect {
+            port: config.serial.port.clone(),
+            baud_rate: config.serial.baud_rate,
+        },
+        &ui.as_weak(),
+    );
 
     // --- Movement Handlers ---
     // Each jog button click becomes a queued command for the worker.
 
     let t = tx.clone();
+    let uh = ui.as_weak();
     ui.on_move_x(move |d| {
-        let _ = t.send(RobotCommand::MoveAxis(Axis::X, d));
+        dispatch(&t, RobotCommand::MoveAxis(Axis::X, d), &uh);
     });
 
     let t = tx.clone();
+    let uh = ui.as_weak();
     ui.on_move_y(move |d| {
-        let _ = t.send(RobotCommand::MoveAxis(Axis::Y, d));
+        dispatch(&t, RobotCommand::MoveAxis(Axis::Y, d), &uh);
     });
 
     let t = tx.clone();
+    let uh = ui.as_weak();
     ui.on_move_z(move |d| {
-        let _ = t.send(RobotCommand::MoveAxis(Axis::Z, d));
+        dispatch(&t, RobotCommand::MoveAxis(Axis::Z, d), &uh);
     });
 
     let t = tx.clone();
+    let uh = ui.as_weak();
     ui.on_move_cart(move |d| {
-        let _ = t.send(RobotCommand::MoveCart(d));
+        dispatch(&t, RobotCommand::MoveCart(d), &uh);
     });
 
     // --- Homing Handlers ---
 
     let t = tx.clone();
+    let uh = ui.as_weak();
     ui.on_home_xyz(move || {
-        let _ = t.send(RobotCommand::HomeXyz);
+        dispatch(&t, RobotCommand::HomeXyz, &uh);
     });
 
     let t = tx.clone();
+    let uh = ui.as_weak();
     ui.on_home_cart(move || {
-        let _ = t.send(RobotCommand::HomeCart);
+        dispatch(&t, RobotCommand::HomeCart, &uh);
     });
 
     // --- System / Utility Handlers ---
@@ -199,7 +209,7 @@ fn main() -> anyhow::Result<()> {
             // "Connected" / "... failed" when the handshake returns.
             ui.set_is_connected(false);
             ui.set_status_text(format!("Connecting to {}...", port).into());
-            let _ = t.send(RobotCommand::Connect { port, baud_rate });
+            dispatch(&t, RobotCommand::Connect { port, baud_rate }, &uh);
         }
     });
 
@@ -239,7 +249,7 @@ fn main() -> anyhow::Result<()> {
             }
             let job_id = job.get() + 1;
             job.set(job_id);
-            let _ = t.send(RobotCommand::SeedPlate { plate, job_id });
+            dispatch(&t, RobotCommand::SeedPlate { plate, job_id }, &uh);
         } else if let Some(ui) = uh.upgrade() {
             // Should not happen through the normal flow, but guard anyway.
             ui.set_status_text("No plate selected".into());
@@ -392,7 +402,11 @@ fn spawn_robot_worker(
                             set_status(&ui, "Seeding stopped".into(), None);
                         }
                         Err(e) => {
-                            set_status(&ui, format!("Error seeding plate: {}", e), None);
+                            // A job that died mid-plate needs operator action
+                            // (inspect the tray, re-home, retry) — full text on
+                            // the persistent banner, not the elided status bar.
+                            set_status(&ui, "Seeding failed".into(), None);
+                            set_error(&ui, format!("Seeding failed: {}", e));
                             leave_seeding_screen(&ui);
                         }
                     }
@@ -403,6 +417,40 @@ fn spawn_robot_worker(
     });
 
     tx
+}
+
+/// Operator-facing message shown when the robot worker thread can no longer
+/// be reached (a command send failed). The worker owns the only handle to the
+/// serial port, so once it is gone the robot is uncontrollable until restart.
+const WORKER_DEAD_MSG: &str = "Robot control has stopped unexpectedly. Restart the application — the robot cannot be controlled until then.";
+
+/// Sends a command to the worker from the UI thread, raising the persistent
+/// error surface if the worker thread has died (`send` returns `Err` once the
+/// receiver is gone). Without this, a dead worker would leave the UI running
+/// with no symptom while every button silently does nothing.
+///
+/// Must be called on the UI thread (it is, from Slint callbacks), so it
+/// touches the error property directly.
+fn dispatch(tx: &mpsc::Sender<RobotCommand>, cmd: RobotCommand, ui: &slint::Weak<AppWindow>) {
+    if tx.send(cmd).is_err() {
+        eprintln!("{}", WORKER_DEAD_MSG);
+        if let Some(ui) = ui.upgrade() {
+            ui.set_error_text(WORKER_DEAD_MSG.into());
+        }
+    }
+}
+
+/// Raises the persistent, full-text error surface (a dismissible banner) for
+/// failures that require operator attention, distinct from the transient
+/// one-line status bar. Mirrors to the console for SSH debugging.
+///
+/// Safe to call from the worker thread: the UI mutation is scheduled onto
+/// the Slint event loop.
+fn set_error(ui: &slint::Weak<AppWindow>, msg: String) {
+    println!("{}", msg);
+    let _ = ui.upgrade_in_event_loop(move |ui| {
+        ui.set_error_text(msg.into());
+    });
 }
 
 /// Shows a status message in the UI status bar (and mirrors it to the

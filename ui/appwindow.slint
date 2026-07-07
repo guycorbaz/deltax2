@@ -51,7 +51,13 @@ export component AppWindow inherits Window {
     callback move-cart(float);    // Relative move on rotation axis
     callback home-xyz();          // Trigger G28 auto-homing
     callback home-cart();         // Reset carriage position
-    callback list-com-ports();     // Triggers serial port enumeration log
+
+    // Serial port management (Configuration screen). The port list is shown
+    // on screen — never on stdout, which is invisible in kiosk mode.
+    in property <[string]> com-ports;      // Detected ports (incl. the config port), set by the backend
+    in-out property <string> selected-port; // Port the operator picked; reconnect targets it
+    callback refresh-com-ports();          // Re-enumerate serial ports into com-ports
+    callback reconnect();                  // Re-run the connect handshake on selected-port
     in property <[string]> plate-names; // List of plate names from config.toml
     callback plate-selected(int);  // User selected a plate index (records the choice only)
     callback start-seeding();      // User confirmed seeds are loaded; begin the plate job
@@ -109,11 +115,18 @@ export component AppWindow inherits Window {
 
             // System Configuration Screen logic
             if (root.current-screen == ScreenState.Configuration): SystemScreen {
+                com-ports: root.com-ports;
+                selected-port <=> root.selected-port;
+                is-connected: root.is-connected;
+                status-text: root.status-text;
                 ok-clicked => {
                     root.current-screen = ScreenState.Main
                 }
-                list-com-clicked => {
-                    root.list-com-ports()
+                refresh-clicked => {
+                    root.refresh-com-ports()
+                }
+                reconnect-clicked => {
+                    root.reconnect()
                 }
             }
 

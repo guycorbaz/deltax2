@@ -1,19 +1,29 @@
 // System Configuration Screen
-// Provides access to low-level settings such as serial port configuration 
-// and diagnostic tools.
+// Serial port management for the touch-only kiosk: shows the detected ports
+// on screen (stdout is invisible in production), lets the operator pick one,
+// and re-runs the connect handshake from the UI (issue #4).
 
-import { Button, VerticalBox } from "std-widgets.slint";
+import { Button } from "std-widgets.slint";
 
 export component SystemScreen inherits Rectangle {
     background: #e19292; // Distinctive background for configuration mode
 
-    // Callbacks to communicate with the application state machine/backend.
-    callback ok-clicked();       // Return to home screen
-    callback list-com-clicked(); // Diagnostic: List detected COM ports in console
+    // Detected serial ports (always includes the configured port), the
+    // currently picked port, and the live connection state — all driven by
+    // the backend through AppWindow.
+    in property <[string]> com-ports;
+    in-out property <string> selected-port;
+    in property <bool> is-connected;
+    in property <string> status-text;
+
+    // Callbacks to the application/backend.
+    callback ok-clicked();        // Return to home screen
+    callback refresh-clicked();   // Re-enumerate the serial ports
+    callback reconnect-clicked(); // Re-run the connect handshake on selected-port
 
     // Title label
     Text {
-        text: @tr("System screen");
+        text: @tr("Serial connection");
         y: 20px;
         font-size: 20px;
         font-weight: 700;
@@ -21,15 +31,90 @@ export component SystemScreen inherits Rectangle {
         width: parent.width;
     }
 
-    // Diagnostic tool: Scans for connected hardware
+    // Connection state + currently selected port. status-text carries the
+    // pending "Connecting..." feedback while a reconnect is in flight.
+    HorizontalLayout {
+        x: 20px;
+        y: 64px;
+        spacing: 10px;
+        Rectangle {
+            width: 14px;
+            height: 14px;
+            border-radius: 7px;
+            background: root.is-connected ? #4CAF50 : #F44336;
+            y: (parent.height - self.height) / 2;
+        }
+        Text {
+            text: root.status-text;
+            font-size: 15px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    // Port selection list. Enumeration is degraded on Linux (no libudev), so
+    // the list is short in practice; the configured port is always present.
+    Text {
+        text: @tr("Detected ports:");
+        x: 20px;
+        y: 104px;
+        font-size: 15px;
+        font-weight: 700;
+    }
+    Rectangle {
+        x: 20px;
+        y: 132px;
+        width: 380px;
+        height: 260px;
+
+        VerticalLayout {
+            spacing: 10px;
+            alignment: start;
+            for port in root.com-ports: Rectangle {
+                height: 60px;
+                border-radius: 6px;
+                border-width: port == root.selected-port ? 3px : 1px;
+                border-color: port == root.selected-port ? #1b5e20 : #7a4a4a;
+                background: port == root.selected-port ? #a5d6a7 : #f3d0d0;
+                Text {
+                    text: port;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: parent.width;
+                    overflow: elide;
+                }
+                TouchArea {
+                    clicked => {
+                        root.selected-port = port;
+                    }
+                }
+            }
+        }
+    }
+
+    // Action column on the right: Refresh the list, Reconnect (primary),
+    // and Ok to leave. All ≥60px for gloved touch.
     Button {
-        x: (parent.width - self.width) / 2;
-        y: 117px;
-        width: 160px;
+        x: 440px;
+        y: 132px;
+        width: 200px;
         height: 60px;
-        text: @tr("List com");
+        text: @tr("Refresh ports");
         clicked => {
-            root.list-com-clicked()
+            root.refresh-clicked()
+        }
+    }
+    Button {
+        x: 440px;
+        y: 202px;
+        width: 200px;
+        height: 60px;
+        primary: true;
+        enabled: root.selected-port != "";
+        text: @tr("Reconnect");
+        clicked => {
+            root.reconnect-clicked()
         }
     }
 

@@ -15,9 +15,18 @@ export component SeedingScreen inherits Rectangle {
     // Job progress text provided by the backend (e.g., "Pot 12 / 77").
     in property <string> progress-text;
 
-    // Status Title
+    // Pause state (issue #17). `paused` is the worker-confirmed state; `transition`
+    // is the pending window between the operator's tap and that confirmation (the
+    // current pot must finish first). Together they drive the title, the paused
+    // badge, and which of Pause/Continue is available.
+    in property <bool> paused;
+    in property <bool> transition;
+
+    // Status Title — reflects the paused state so it is visible on the screen
+    // itself, not only in the transient status bar.
     Text {
-        text: @tr("Seeding in progress");
+        text: root.paused ? @tr("Seeding paused") : @tr("Seeding in progress");
+        color: root.paused ? #8a5a00 : black;
         y: 30px;
         font-size: 20px;
         font-weight: 700;
@@ -34,6 +43,38 @@ export component SeedingScreen inherits Rectangle {
         width: parent.width;
     }
 
+    // Amber "paused" badge — an unmistakable, finger-height marker that the job
+    // is held and awaiting a resume.
+    if root.paused: Rectangle {
+        y: 120px;
+        x: (parent.width - self.width) / 2;
+        width: 220px;
+        height: 44px;
+        background: #ffd27f;
+        border-radius: 22px;
+        border-width: 2px;
+        border-color: #8a5a00;
+        Text {
+            text: @tr("⏸  Paused");
+            color: #5a3a00;
+            font-size: 18px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            width: parent.width;
+        }
+    }
+
+    // Pending hint while the request is in flight but not yet confirmed.
+    if root.transition: Text {
+        text: root.paused ? @tr("Resuming…") : @tr("Pausing…");
+        y: 120px;
+        font-size: 16px;
+        color: #555;
+        horizontal-alignment: center;
+        width: parent.width;
+    }
+
     // --- Control Buttons ---
     HorizontalBox {
         y: parent.height - self.height - 15px; // Standardized bottom gap
@@ -41,7 +82,8 @@ export component SeedingScreen inherits Rectangle {
         x: (parent.width - self.width) / 2;
         spacing: 30px;
 
-        // Stop Button
+        // Stop Button — always available: the operator must be able to abort
+        // regardless of pause/transition state.
         Button {
             width: 70px;
             height: 60px;
@@ -51,21 +93,23 @@ export component SeedingScreen inherits Rectangle {
             }
         }
 
-        // Pause Button
+        // Pause Button — only while running (not already paused, not mid-request).
         Button {
             width: 70px;
             height: 60px;
             icon: @image-url("assets/icons/pause-circle.svg");
+            enabled: !root.paused && !root.transition;
             clicked => {
                 root.pause-clicked()
             }
         }
 
-        // Play / Continue Button
+        // Play / Continue Button — only while paused (not mid-request).
         Button {
             width: 70px;
             height: 60px;
             icon: @image-url("assets/icons/play-circle.svg");
+            enabled: root.paused && !root.transition;
             clicked => {
                 root.continue-clicked()
             }

@@ -704,12 +704,21 @@ impl<T: Transport> DeltaRobot<T> {
     /// for the duration of the job and is intended to run on the robot
     /// worker thread, with the controls driven from the UI thread.
     ///
+    /// A pause requested from the UI only takes effect once the current pot
+    /// finishes and the loop reaches the wait below. `on_pause` reports that
+    /// transition — `true` when the loop actually parks on a pause, `false`
+    /// when it leaves the wait (resumed or aborted) — so the UI can show a
+    /// "pausing…" pending state until the pause is genuinely in effect,
+    /// following the async-feedback rule.
+    ///
     /// # Arguments
     ///
     /// * `plate` - The plate geometry definition.
     /// * `job_id` - The id the UI assigned to this job when queuing it.
     /// * `control` - Shared pause/abort controls checked before each pot.
     /// * `progress` - Called after each pot with (pots done, total pots).
+    /// * `on_pause` - Called with `true` when the loop parks on a pause and
+    ///   `false` when it leaves that wait, so the UI reflects the real state.
     ///
     /// # Errors
     ///
@@ -721,6 +730,7 @@ impl<T: Transport> DeltaRobot<T> {
         job_id: u64,
         control: &SeedingControl,
         mut progress: impl FnMut(i32, i32),
+        mut on_pause: impl FnMut(bool),
     ) -> Result<SeedOutcome> {
         self.home_cart()?;
         self.home_xyz()?;
@@ -731,9 +741,21 @@ impl<T: Transport> DeltaRobot<T> {
         // Iterate through the grid of pots
         for x in 0..plate.nb_pot.x {
             for y in 0..plate.nb_pot.y {
-                // Hold here while paused; a stop request also ends the pause wait.
+                // Hold here while paused; a stop request also ends the pause
+                // wait. Announce the paused state exactly once on entry and
+                // clear it once on exit, so the UI sees the real transition
+                // (not just the button tap) even though the request arrived
+                // mid-pot.
+                let mut announced_pause = false;
                 while control.is_paused() && !control.should_abort(job_id) {
+                    if !announced_pause {
+                        on_pause(true);
+                        announced_pause = true;
+                    }
                     std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                if announced_pause {
+                    on_pause(false);
                 }
                 if control.should_abort(job_id) {
                     return Ok(SeedOutcome::Aborted);
@@ -988,6 +1010,91 @@ mod tests {
         assert!(control.is_paused());
         control.resume();
         assert!(!control.is_paused());
+    }
+
+    /// A single-pot plate: seeds one pot with a single G28 on the wire and no
+    /// per-pot hardware traffic (seed_pot is still a placeholder).
+    fn single_pot_plate() -> Plate {
+        let mut plate = test_plate();
+        plate.nb_pot = IntCoord2D { x: 1, y: 1 };
+        plate
+    }
+
+    #[test]
+    fn seed_plate_completes_without_pause_callbacks_when_not_paused() {
+        let control = SeedingControl::new();
+        let mut robot = DeltaRobot::with_transport(MockTransport::scripted(&["ok\n"]));
+        let mut pause_events: Vec<bool> = Vec::new();
+        let mut last_done = 0;
+        let outcome = robot
+            .seed_plate(
+                &single_pot_plate(),
+                1,
+                &control,
+                |done, _total| last_done = done,
+                |p| pause_events.push(p),
+            )
+            .unwrap();
+        assert_eq!(outcome, SeedOutcome::Completed);
+        assert_eq!(last_done, 1);
+        // Never paused, so the UI is never told about a pause transition.
+        assert!(pause_events.is_empty());
+    }
+
+    #[test]
+    fn seed_plate_stop_before_first_pot_aborts_without_pause_callback() {
+        let control = SeedingControl::new();
+        control.request_abort(1); // stop pressed before the pot loop reaches a pause
+        let mut robot = DeltaRobot::with_transport(MockTransport::scripted(&["ok\n"]));
+        let mut pause_events: Vec<bool> = Vec::new();
+        let outcome = robot
+            .seed_plate(
+                &single_pot_plate(),
+                1,
+                &control,
+                |_done, _total| {},
+                |p| pause_events.push(p),
+            )
+            .unwrap();
+        assert_eq!(outcome, SeedOutcome::Aborted);
+        assert!(pause_events.is_empty());
+    }
+
+    #[test]
+    fn seed_plate_reports_pause_then_resume_transition() {
+        use std::sync::{Arc, Mutex};
+        use std::time::Duration;
+
+        // Pause is requested up front, so the loop parks on the very first pot;
+        // a helper thread resumes it once it has parked.
+        let control = Arc::new(SeedingControl::new());
+        control.request_pause();
+        let resumer = {
+            let c = control.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(50));
+                c.resume();
+            })
+        };
+
+        let events = Arc::new(Mutex::new(Vec::<bool>::new()));
+        let ev = events.clone();
+        let mut robot = DeltaRobot::with_transport(MockTransport::scripted(&["ok\n"]));
+        let outcome = robot
+            .seed_plate(
+                &single_pot_plate(),
+                1,
+                &control,
+                |_done, _total| {},
+                move |p| ev.lock().unwrap().push(p),
+            )
+            .unwrap();
+        resumer.join().unwrap();
+
+        assert_eq!(outcome, SeedOutcome::Completed);
+        // The worker confirmed the pause (true), then the resume (false):
+        // exactly the transition the UI reflects.
+        assert_eq!(*events.lock().unwrap(), vec![true, false]);
     }
 
     #[test]

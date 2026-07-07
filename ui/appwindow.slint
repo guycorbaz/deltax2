@@ -75,6 +75,14 @@ export component AppWindow inherits Window {
     // Progress of the running seeding job (e.g., "Pot 12 / 77"), set by the backend.
     in-out property <string> seeding-progress: "";
 
+    // Seeding pause state (issue #17). `seeding-paused` is the worker-confirmed
+    // state: true only once the seeding loop has actually parked on a pause
+    // between pots. `seeding-transition` is the pending state between the button
+    // tap and that confirmation (the current pot must finish first), so the
+    // Pause/Continue buttons can show a non-committed "pausing…/resuming…" state.
+    in-out property <bool> seeding-paused: false;
+    in-out property <bool> seeding-transition: false;
+
     VerticalLayout {
         // Content Area: Dynamically switches between sub-screens based on current-screen state.
         Rectangle {
@@ -164,15 +172,21 @@ export component AppWindow inherits Window {
             // Seeding Flow: Active Process
             if (root.current-screen == ScreenState.Seeding): SeedingScreen {
                 progress-text: root.seeding-progress;
+                paused: root.seeding-paused;
+                transition: root.seeding-transition;
                 stop-clicked => {
                     root.stop-seeding();
                     root.current-screen = ScreenState.Main;
                 }
                 pause-clicked => {
-                    root.pause-seeding()
+                    // Optimistic pending state until the worker confirms the
+                    // pause took effect between pots (async-feedback rule).
+                    root.seeding-transition = true;
+                    root.pause-seeding();
                 }
                 continue-clicked => {
-                    root.continue-seeding()
+                    root.seeding-transition = true;
+                    root.continue-seeding();
                 }
             }
         }

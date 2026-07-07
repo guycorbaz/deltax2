@@ -246,6 +246,9 @@ fn main() -> anyhow::Result<()> {
         if let Some(plate) = plate {
             if let Some(ui) = uh.upgrade() {
                 ui.set_seeding_progress("Starting...".into());
+                // Fresh job: clear any pause state left visible from before.
+                ui.set_seeding_paused(false);
+                ui.set_seeding_transition(false);
             }
             let job_id = job.get() + 1;
             job.set(job_id);
@@ -386,11 +389,25 @@ fn spawn_robot_worker(
                     set_status(&ui, format!("Seeding plate: {}", plate.name), None);
 
                     let progress_ui = ui.clone();
-                    let result = robot.seed_plate(&plate, job_id, &control, move |done, total| {
-                        let _ = progress_ui.upgrade_in_event_loop(move |ui| {
-                            ui.set_seeding_progress(format!("Pot {} / {}", done, total).into());
-                        });
-                    });
+                    let pause_ui = ui.clone();
+                    let result = robot.seed_plate(
+                        &plate,
+                        job_id,
+                        &control,
+                        move |done, total| {
+                            let _ = progress_ui.upgrade_in_event_loop(move |ui| {
+                                ui.set_seeding_progress(format!("Pot {} / {}", done, total).into());
+                            });
+                        },
+                        // Worker-confirmed pause transitions: clear the pending
+                        // flag and reflect the real paused state (issue #17).
+                        move |paused| {
+                            let _ = pause_ui.upgrade_in_event_loop(move |ui| {
+                                ui.set_seeding_paused(paused);
+                                ui.set_seeding_transition(false);
+                            });
+                        },
+                    );
 
                     match result {
                         Ok(SeedOutcome::Completed) => {

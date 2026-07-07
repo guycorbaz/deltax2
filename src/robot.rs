@@ -9,6 +9,7 @@ use crate::serial::{SerialCommunication, Transport};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 /// Represents a 2D coordinate (X, Y).
 /// Typically used for pot locations or planar movements.
@@ -339,15 +340,60 @@ pub enum SeedOutcome {
     Aborted,
 }
 
+/// Time-source seam for the polling/timeout loops, so their behavior can be
+/// tested deterministically without real `sleep`s (issue #19).
+///
+/// Production uses [`SystemClock`] (the monotonic wall clock + `thread::sleep`);
+/// tests inject a virtual clock whose time advances only when `sleep` is called,
+/// so a "no `ok` ever arrives" timeout completes instantly.
+pub trait Clock {
+    /// Monotonic time elapsed since this clock was created.
+    fn elapsed(&self) -> Duration;
+    /// Between polls: really sleeps (production) or virtually advances time
+    /// (tests) by `dur`.
+    fn sleep(&self, dur: Duration);
+}
+
+/// Production [`Clock`] backed by [`Instant`] and `std::thread::sleep`.
+pub struct SystemClock {
+    start: Instant,
+}
+
+impl SystemClock {
+    /// Creates a clock whose origin is now.
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+        }
+    }
+}
+
+impl Default for SystemClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clock for SystemClock {
+    fn elapsed(&self) -> Duration {
+        self.start.elapsed()
+    }
+    fn sleep(&self, dur: Duration) {
+        std::thread::sleep(dur);
+    }
+}
+
 /// Interface for controlling a Delta X 2 robot.
 ///
 /// This struct manages state tracking (where the head is), G-code generation,
 /// and safety limit enforcement. It talks to the hardware through any
 /// [`Transport`] implementation — [`SerialCommunication`] in production, a
-/// scripted mock in tests.
-pub struct DeltaRobot<T: Transport = SerialCommunication> {
+/// scripted mock in tests — and reads time through a [`Clock`] seam.
+pub struct DeltaRobot<T: Transport = SerialCommunication, C: Clock = SystemClock> {
     /// The byte-level transport towards the robot.
     transport: T,
+    /// Time source for the polling/timeout loops.
+    clock: C,
     /// Tracked X position in mm.
     actual_x: f32,
     /// Tracked Y position in mm.
@@ -384,14 +430,25 @@ impl DeltaRobot {
     }
 }
 
-impl<T: Transport> DeltaRobot<T> {
-    /// Creates a `DeltaRobot` driving the given transport.
+impl<T: Transport> DeltaRobot<T, SystemClock> {
+    /// Creates a `DeltaRobot` driving the given transport with the real system
+    /// clock.
     ///
     /// Production code uses [`DeltaRobot::new`]; tests inject a scripted
-    /// mock here so no real serial port is ever opened.
+    /// mock here so no real serial port is ever opened. Tests that exercise
+    /// timeout behavior use [`DeltaRobot::with_transport_and_clock`] to also
+    /// inject a virtual clock.
     pub fn with_transport(transport: T) -> Self {
+        Self::with_transport_and_clock(transport, SystemClock::new())
+    }
+}
+
+impl<T: Transport, C: Clock> DeltaRobot<T, C> {
+    /// Creates a `DeltaRobot` from a transport and a [`Clock`].
+    pub fn with_transport_and_clock(transport: T, clock: C) -> Self {
         Self {
             transport,
+            clock,
             actual_x: 0.0,
             actual_y: 0.0,
             actual_z: 0.0,
@@ -500,8 +557,8 @@ impl<T: Transport> DeltaRobot<T> {
         self.transport.write_data(b"Position\n")?;
 
         let mut buffer = String::new();
-        let start = std::time::Instant::now();
-        while start.elapsed() < std::time::Duration::from_secs(2) {
+        let start = self.clock.elapsed();
+        while self.clock.elapsed() - start < Duration::from_secs(2) {
             match self.transport.read_data() {
                 Ok(data) => {
                     if !data.is_empty() {
@@ -525,7 +582,7 @@ impl<T: Transport> DeltaRobot<T> {
                     return Err(e.context("serial link lost while reading position"));
                 }
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            self.clock.sleep(Duration::from_millis(10));
         }
         Err(anyhow::anyhow!("no position response within 2s"))
     }
@@ -543,10 +600,10 @@ impl<T: Transport> DeltaRobot<T> {
         self.transport.write_data(b"IsDelta\n")?;
 
         let mut response = String::new();
-        let start = std::time::Instant::now();
+        let start = self.clock.elapsed();
 
         // Poll for response with a 2-second timeout
-        while start.elapsed() < std::time::Duration::from_secs(2) {
+        while self.clock.elapsed() - start < Duration::from_secs(2) {
             match self.transport.read_data() {
                 Ok(data) => {
                     response.push_str(&String::from_utf8_lossy(&data));
@@ -560,7 +617,7 @@ impl<T: Transport> DeltaRobot<T> {
                 Err(e) => return Err(e.context("serial link lost during handshake")),
             }
             // Small sleep to prevent 100% CPU usage during polling
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            self.clock.sleep(Duration::from_millis(50));
         }
         Err(anyhow::anyhow!("no YesDelta response within 2s"))
     }
@@ -617,9 +674,9 @@ impl<T: Transport> DeltaRobot<T> {
     /// the position as unknown.
     fn wait_for_ok(&mut self, timeout_secs: u64) -> Result<()> {
         let mut buffer = String::new();
-        let start = std::time::Instant::now();
+        let start = self.clock.elapsed();
 
-        while start.elapsed() < std::time::Duration::from_secs(timeout_secs) {
+        while self.clock.elapsed() - start < Duration::from_secs(timeout_secs) {
             match self.transport.read_data() {
                 Ok(data) => {
                     if !data.is_empty() {
@@ -637,7 +694,7 @@ impl<T: Transport> DeltaRobot<T> {
                 }
             }
             // Sleep briefly to yield execution
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            self.clock.sleep(Duration::from_millis(10));
         }
         Err(anyhow::anyhow!("Timeout waiting for 'ok' from robot"))
     }
@@ -977,6 +1034,35 @@ mod tests {
         }
     }
 
+    /// Virtual [`Clock`] for timeout tests: time advances only when `sleep` is
+    /// called, so a "no response ever arrives" loop reaches its timeout
+    /// instantly and without any real sleeping. The shared counter lets a test
+    /// read how far virtual time advanced.
+    #[derive(Clone)]
+    struct MockClock {
+        now: std::rc::Rc<std::cell::Cell<Duration>>,
+    }
+
+    impl MockClock {
+        fn new() -> Self {
+            Self {
+                now: std::rc::Rc::new(std::cell::Cell::new(Duration::ZERO)),
+            }
+        }
+        fn virtual_elapsed(&self) -> Duration {
+            self.now.get()
+        }
+    }
+
+    impl Clock for MockClock {
+        fn elapsed(&self) -> Duration {
+            self.now.get()
+        }
+        fn sleep(&self, dur: Duration) {
+            self.now.set(self.now.get() + dur);
+        }
+    }
+
     /// Software limits matching the shipped `config.toml`.
     fn test_limits() -> RobotConfig {
         toml::from_str(
@@ -1246,6 +1332,66 @@ mod tests {
             parse_position("Homing done\nX:1.0 Y:2.0 Z:3.0\n"),
             Some((1.0, 2.0, 3.0))
         );
+    }
+
+    // --- Timeout behavior, driven by the injected virtual clock (issue #19) ---
+
+    #[test]
+    fn wait_for_ok_times_out_deterministically() {
+        // The transport never yields an `ok`; the virtual clock advances via
+        // the poll sleeps, so the 5s timeout is reached with no real sleeping.
+        let clock = MockClock::new();
+        let handle = clock.clone();
+        let mut robot = DeltaRobot::with_transport_and_clock(MockTransport::scripted(&[]), clock);
+        let wall_start = Instant::now();
+        assert!(robot.wait_for_ok(5).is_err());
+        assert!(handle.virtual_elapsed() >= Duration::from_secs(5));
+        // The whole "5 second" wait happened in a fraction of a real second.
+        assert!(wall_start.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn wait_for_ok_timeout_scales_with_the_command_class() {
+        // A 2s class stops at ~2s of virtual time, a 10s class at ~10s — the
+        // per-command timeout is honored, not a fixed value.
+        for secs in [2u64, 10] {
+            let clock = MockClock::new();
+            let handle = clock.clone();
+            let mut robot =
+                DeltaRobot::with_transport_and_clock(MockTransport::scripted(&[]), clock);
+            assert!(robot.wait_for_ok(secs).is_err());
+            assert!(handle.virtual_elapsed() >= Duration::from_secs(secs));
+            // One poll interval (10ms) of overshoot at most.
+            assert!(
+                handle.virtual_elapsed() < Duration::from_secs(secs) + Duration::from_millis(20)
+            );
+        }
+    }
+
+    #[test]
+    fn wait_for_ok_returns_before_timeout_when_ok_arrives() {
+        // The ok is already waiting, so the first poll returns Ok without the
+        // virtual clock ever reaching the timeout.
+        let clock = MockClock::new();
+        let handle = clock.clone();
+        let mut mock = MockTransport::scripted(&[]);
+        mock.pending.push_back(b"ok\n".to_vec());
+        let mut robot = DeltaRobot::with_transport_and_clock(mock, clock);
+        assert!(robot.wait_for_ok(5).is_ok());
+        assert!(handle.virtual_elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn handshake_times_out_without_yesdelta() {
+        // No YesDelta ever comes back: the 2s handshake timeout fires instantly
+        // in virtual time.
+        let clock = MockClock::new();
+        let handle = clock.clone();
+        let mut robot = DeltaRobot::with_transport_and_clock(MockTransport::scripted(&[]), clock);
+        let wall_start = Instant::now();
+        assert!(robot.handshake().is_err());
+        assert!(handle.virtual_elapsed() >= Duration::from_secs(2));
+        assert!(wall_start.elapsed() < Duration::from_secs(1));
     }
 
     #[test]

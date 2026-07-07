@@ -79,7 +79,7 @@ _Authoritative versions live in `Cargo.toml` / committed `Cargo.lock`; numbers h
 - **No coverage theater:** expected values are hand-computed literals — never derived by repeating the formula under test. Limit tests must cover the boundaries: exactly at `limit_min`/`limit_max` and an epsilon beyond, both signs (Z is negative) — the tests pin down the inclusive/exclusive semantics.
 - **f32 assertions use an explicit tolerance with a message:** `assert!((a - b).abs() < 0.01, "got {a}, want {b}")` — 0.01 mm is far below mechanical precision. Never `assert_eq!` on floats. Exception: serialized G-code is asserted by exact string equality (`assert_eq!(cmd, "G0 X10.0000 FEEDBACK:ok\n")`) — `{:.4}` makes it deterministic; never parse it back into floats.
 - **Never assert on anyhow error message text.** Test the pure decision functions instead (see Rust rules).
-- **No wall-clock timeout tests** (real `sleep`s — slow, flaky). Accepted trade-off until a *clock* abstraction exists; the transport seam alone does not unlock timeout tests (`wait_for_ok` reads `Instant`).
+- **Timeout tests go through the `Clock` seam, never real `sleep`s** (slow, flaky). `DeltaRobot` is generic over a `Clock` (`src/robot.rs`, issue #19): production uses `SystemClock` (`Instant` + `thread::sleep`); tests inject `MockClock`, whose time advances only when `sleep` is called, so a "no `ok` ever arrives" wait reaches its timeout instantly and the class (2s/5s/10s) is asserted on the virtual clock. Build robots for timeout tests with `DeltaRobot::with_transport_and_clock`.
 - **UI testing: see Slint rules** — `cargo build` is the only automated UI validation; visual rendering is human-validated.
 
 ### Code Quality & Style Rules

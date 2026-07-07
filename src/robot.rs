@@ -1139,6 +1139,72 @@ mod tests {
         assert!(plate.validate(&test_limits()).is_err());
     }
 
+    /// Property (issue #21): for *any* plate that `validate` accepts, every pot
+    /// the seeding loop will visit must lie within the software limits — i.e.
+    /// checking only the first and last pot (as `validate` does) genuinely
+    /// covers the whole grid. This sweeps a wide grid of geometries by hand (no
+    /// `proptest` dependency) and, using the same pot formula as `seed_plate`,
+    /// asserts the safety invariant on every accepted plate. It also asserts
+    /// the sweep exercises both accepted and rejected plates, so the property
+    /// is not vacuous.
+    #[test]
+    fn every_pot_of_a_validated_plate_is_within_limits() {
+        let limits = test_limits();
+        let nb_values = [1i32, 2, 8, 15];
+        let dist_values = [0.0f32, 1.0, 12.0, 40.0];
+        let first_values = [-160.0f32, -70.0, 0.0, 24.0, 70.0, 160.0];
+
+        let mut accepted = 0u32;
+        let mut rejected = 0u32;
+
+        for &nx in &nb_values {
+            for &ny in &nb_values {
+                for &dx in &dist_values {
+                    for &dy in &dist_values {
+                        for &fx in &first_values {
+                            for &fy in &first_values {
+                                let mut plate = test_plate();
+                                plate.nb_pot = IntCoord2D { x: nx, y: ny };
+                                plate.pot_distance = Coord2D { x: dx, y: dy };
+                                plate.first_pot = Coord2D { x: fx, y: fy };
+
+                                if plate.validate(&limits).is_err() {
+                                    rejected += 1;
+                                    continue;
+                                }
+                                accepted += 1;
+
+                                // Same formula the seeding loop uses.
+                                for i in 0..plate.nb_pot.x {
+                                    let px = plate.first_pot.x - i as f32 * plate.pot_distance.x;
+                                    assert!(
+                                        px >= limits.limit_min.x && px <= limits.limit_max.x,
+                                        "accepted plate has pot X={px} outside [{}, {}] (nx={nx} dx={dx} fx={fx})",
+                                        limits.limit_min.x,
+                                        limits.limit_max.x
+                                    );
+                                }
+                                for j in 0..plate.nb_pot.y {
+                                    let py = plate.first_pot.y - j as f32 * plate.pot_distance.y;
+                                    assert!(
+                                        py >= limits.limit_min.y && py <= limits.limit_max.y,
+                                        "accepted plate has pot Y={py} outside [{}, {}] (ny={ny} dy={dy} fy={fy})",
+                                        limits.limit_min.y,
+                                        limits.limit_max.y
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // The sweep must hit both sides, or the invariant above is vacuous.
+        assert!(accepted > 0, "no plate was accepted — sweep too narrow");
+        assert!(rejected > 0, "no plate was rejected — sweep too narrow");
+    }
+
     #[test]
     fn fresh_control_neither_aborts_nor_pauses() {
         let control = SeedingControl::new();

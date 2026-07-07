@@ -72,58 +72,54 @@ export component CalibrationScreen inherits Rectangle {
             horizontal-alignment: center;
         }
 
-        Rectangle {
-            y: 30px;
-            width: parent.width;
-            height: 60px;
-            background: root.background;
-            border-color: #929292;
-            border-width: 1px;
-            border-radius: 5px;
-            
-            // Manual layout of step buttons to ensure visibility
-            Button {
-                x: 5px;
-                y: 5px;
-                width: 62px;
-                height: 50px;
-                text: "0.01";
-                clicked => {
-                    root.step-size = 0.01
-                }
+        // Step buttons. The active step is highlighted (primary/accent) so the
+        // operator can tell whether the next jog moves 0.01mm or 5mm (#16). Each
+        // button is 64px tall to meet the >=60px touch-target rule for gloved use.
+        Button {
+            x: 0px;
+            y: 28px;
+            width: 64px;
+            height: 64px;
+            text: "0.01";
+            primary: root.step-size == 0.01;
+            clicked => {
+                root.step-size = 0.01;
             }
+        }
 
-            Button {
-                x: 72px;
-                y: 5px;
-                width: 62px;
-                height: 50px;
-                text: "0.1";
-                clicked => {
-                    root.step-size = 0.1
-                }
+        Button {
+            x: 72px;
+            y: 28px;
+            width: 64px;
+            height: 64px;
+            text: "0.1";
+            primary: root.step-size == 0.1;
+            clicked => {
+                root.step-size = 0.1;
             }
+        }
 
-            Button {
-                x: 139px;
-                y: 5px;
-                width: 62px;
-                height: 50px;
-                text: "1";
-                clicked => {
-                    root.step-size = 1.0
-                }
+        Button {
+            x: 144px;
+            y: 28px;
+            width: 64px;
+            height: 64px;
+            text: "1";
+            primary: root.step-size == 1.0;
+            clicked => {
+                root.step-size = 1.0;
             }
+        }
 
-            Button {
-                x: 206px;
-                y: 5px;
-                width: 62px;
-                height: 50px;
-                text: "5";
-                clicked => {
-                    root.step-size = 5.0
-                }
+        Button {
+            x: 216px;
+            y: 28px;
+            width: 64px;
+            height: 64px;
+            text: "5";
+            primary: root.step-size == 5.0;
+            clicked => {
+                root.step-size = 5.0;
             }
         }
     }
@@ -175,16 +171,8 @@ export component CalibrationScreen inherits Rectangle {
             }
         }
 
-        Button {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            width: 65px;
-            height: 65px;
-            icon: @image-url("assets/icons/home.svg");
-            clicked => {
-                root.home-xyz()
-            }
-        }
+        // Center is intentionally empty: homing is global (G28) and lives in a
+        // clearly labeled footer button, not inside a single-axis pad (#16).
 
         Button {
             x: parent.width - self.width - 10px;
@@ -237,16 +225,7 @@ export component CalibrationScreen inherits Rectangle {
             }
         }
 
-        Button {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            width: 65px;
-            height: 65px;
-            icon: @image-url("assets/icons/home.svg");
-            clicked => {
-                root.home-xyz()
-            }
-        }
+        // Center intentionally empty — see the XY pad note; homing is global.
 
         Button {
             x: (parent.width - self.width) / 2;
@@ -312,6 +291,20 @@ export component CalibrationScreen inherits Rectangle {
     }
 
     // --- Navigation Footer ---
+    // Global homing lives here, clearly labeled, so it can no longer be mistaken
+    // for a per-axis action inside an axis pad (#16). G28 homes all axes to the top.
+    Button {
+        x: 80px;
+        y: parent.height - self.height - 15px;
+        width: 220px;
+        height: 60px;
+        icon: @image-url("assets/icons/home.svg");
+        text: @tr("Home all (G28)");
+        clicked => {
+            root.home-xyz()
+        }
+    }
+
     Button {
         x: (parent.width - self.width) / 2;
         y: parent.height - self.height - 15px;

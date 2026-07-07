@@ -20,6 +20,7 @@ use deltax2::SerialCommunication;
 use deltax2::robot::{Axis, Config, Coord3D, DeltaRobot, Plate, SeedOutcome, SeedingControl};
 use slint::ComponentHandle;
 use std::cell::{Cell, RefCell};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, mpsc};
 
@@ -61,11 +62,19 @@ fn main() -> anyhow::Result<()> {
     // Initialize the Slint window
     let ui = AppWindow::new()?;
 
-    // Load configuration from config.toml
-    // We expect this file to be in the same directory as the executable.
-    let config_path = "config.toml";
-    let config_text = std::fs::read_to_string(config_path)
-        .map_err(|e| anyhow::anyhow!("Failed to read config file {}: {}", config_path, e))?;
+    // Locate and load config.toml. Resolution order (issue #10): an explicit
+    // --config <path>, then next to the executable, then the current working
+    // directory — so a manual SSH launch from any directory still finds it,
+    // while the kiosk systemd unit (WorkingDirectory) keeps working.
+    let config_path = resolve_config_path()?;
+    println!("Loaded config: {}", config_path.display());
+    let config_text = std::fs::read_to_string(&config_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to read config file {}: {}",
+            config_path.display(),
+            e
+        )
+    })?;
     // Deserialize the TOML content into our Config struct
     let config: Config = toml::from_str(&config_text)
         .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
@@ -309,6 +318,65 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Resolves the path to `config.toml` (issue #10).
+///
+/// Order of preference:
+/// 1. an explicit `--config <path>` / `--config=<path>` argument;
+/// 2. `config.toml` next to the executable;
+/// 3. `config.toml` in the current working directory (the kiosk systemd unit's
+///    `WorkingDirectory`).
+///
+/// # Errors
+///
+/// Returns an error if an explicit `--config` path does not exist, or if no
+/// `config.toml` is found in any of the searched locations.
+fn resolve_config_path() -> anyhow::Result<PathBuf> {
+    // 1. Explicit override.
+    if let Some(arg) = parse_config_arg(std::env::args().skip(1)) {
+        let path = PathBuf::from(&arg);
+        if path.is_file() {
+            return Ok(path);
+        }
+        anyhow::bail!("config file not found at --config path: {}", path.display());
+    }
+
+    // 2. Next to the executable — lets a manual SSH launch from any directory
+    //    still find a config deployed alongside the binary.
+    if let Some(candidate) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("config.toml")))
+        .filter(|path| path.is_file())
+    {
+        return Ok(candidate);
+    }
+
+    // 3. Current working directory.
+    let cwd = PathBuf::from("config.toml");
+    if cwd.is_file() {
+        return Ok(cwd);
+    }
+
+    anyhow::bail!(
+        "config.toml not found — pass --config <path>, place it next to the executable, or run from a directory that contains it"
+    )
+}
+
+/// Extracts the value of a `--config <path>` or `--config=<path>` argument from
+/// an argument iterator (the program name must already be skipped). Returns the
+/// last occurrence's value, or `None` if the flag is absent.
+fn parse_config_arg(args: impl IntoIterator<Item = String>) -> Option<String> {
+    let mut result = None;
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        if arg == "--config" {
+            result = args.next();
+        } else if let Some(value) = arg.strip_prefix("--config=") {
+            result = Some(value.to_string());
+        }
+    }
+    result
+}
+
 /// Builds the serial-port list shown on the Configuration screen.
 ///
 /// The configured port always comes first and is guaranteed present, even
@@ -538,4 +606,49 @@ fn leave_seeding_screen(ui: &slint::Weak<AppWindow>) {
             ui.set_current_screen(ScreenState::Main);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_config_arg;
+
+    fn args(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn config_arg_space_form() {
+        assert_eq!(
+            parse_config_arg(args(&["--config", "/etc/dx2.toml"])),
+            Some("/etc/dx2.toml".to_string())
+        );
+    }
+
+    #[test]
+    fn config_arg_equals_form() {
+        assert_eq!(
+            parse_config_arg(args(&["--config=/etc/dx2.toml"])),
+            Some("/etc/dx2.toml".to_string())
+        );
+    }
+
+    #[test]
+    fn config_arg_absent() {
+        assert_eq!(parse_config_arg(args(&["--verbose", "foo"])), None);
+        assert_eq!(parse_config_arg(args(&[])), None);
+    }
+
+    #[test]
+    fn config_arg_last_occurrence_wins() {
+        assert_eq!(
+            parse_config_arg(args(&["--config", "a.toml", "--config=b.toml"])),
+            Some("b.toml".to_string())
+        );
+    }
+
+    #[test]
+    fn config_arg_dangling_flag_is_none() {
+        // "--config" as the final token has no value to consume.
+        assert_eq!(parse_config_arg(args(&["--config"])), None);
+    }
 }

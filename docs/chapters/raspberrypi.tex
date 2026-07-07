@@ -107,6 +107,12 @@ RestartSec=3
 WantedBy=multi-user.target
 \end{lstlisting}
 
+The application looks for \code{config.toml} next to the executable and in the
+working directory (and accepts an explicit \code{-{}-config <path>}), so the
+\code{WorkingDirectory} line above is a convenience rather than a requirement:
+a copy of \code{config.toml} in \code{/home/pi/deltax2} (beside the binary) is
+found either way, and a manual SSH launch from any directory still starts.
+
 Then enable and start it:
 
 \begin{lstlisting}[language=bash]

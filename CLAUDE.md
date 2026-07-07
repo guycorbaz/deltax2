@@ -12,13 +12,13 @@ Daily operation is **touch-only** (kiosk mode, no keyboard/mouse, stdout invisib
 
 ```bash
 cargo build            # build (build.rs compiles ui/appwindow.slint via slint-build)
-cargo run              # run the app; reads config.toml from the current working directory
+cargo run              # run the app; finds config.toml next to the binary or in the CWD (or pass --config <path>)
 cargo build --release  # release build for deployment
 cargo test             # no tests exist yet; test infrastructure is standard cargo
 cargo doc --open       # internal API docs (code is heavily doc-commented)
 ```
 
-The app requires `config.toml` in the working directory at startup (it exits with an error otherwise) and attempts a serial connection immediately, but keeps running with a "Disconnected" status if the robot is unreachable.
+The app resolves `config.toml` at startup in this order: `--config <path>`, then next to the executable, then the current working directory (it exits with an error if none is found). It attempts a serial connection immediately, but keeps running with a "Disconnected" status if the robot is unreachable.
 
 On Raspberry Pi, run with `SLINT_BACKEND=linuxkms` (see the Raspberry Pi chapter of the manual).
 
@@ -28,7 +28,7 @@ Three layers, glued together in `src/main.rs`:
 
 1. **UI (Slint)** — `ui/*.slint`, compiled at build time by `build.rs` and included in Rust via `slint::include_modules!()`. `ui/appwindow.slint` is the root component: it owns a `ScreenState` enum and switches between screens (Main → Calibration / Configuration / the three-step seeding flow ConfirmPlate → ConfirmSeed → Seeding) with conditional `if` elements. All Rust↔UI communication goes through properties and callbacks declared on `AppWindow`; sub-screens forward their events up to it.
 
-2. **Robot logic** — `src/robot.rs` (`DeltaRobot`). Generates G-code, tracks the head position logically (`actual_x/y/z/cart` — position is not read back from hardware except implicitly via homing reset), and enforces software safety limits *before* sending any move command. All config structs (`Config`, `Plate`, `SerialConfig`, `RobotConfig`, `UIConfig`) live here and deserialize from `config.toml` via serde.
+2. **Robot logic** — `src/robot.rs` (`DeltaRobot`). Generates G-code, tracks the head position logically (`actual_x/y/z/cart` — resynced from the firmware's `Position` reply at connect (issue #9) and reset by homing), and enforces software safety limits *before* sending any move command. All config structs (`Config`, `Plate`, `SerialConfig`, `RobotConfig`, `UIConfig`) live here and deserialize from `config.toml` via serde.
 
 3. **Serial transport** — `src/serial.rs`: the `Transport` trait (the seam tests mock — `Ok(empty)` read = nothing yet, `Err` = link lost) and its production impl `SerialCommunication`, a thin wrapper over the `serialport` crate with a 10ms read timeout; raw bytes only, no protocol knowledge. `DeltaRobot` is generic over `Transport` (default `SerialCommunication`).
 

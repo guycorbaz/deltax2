@@ -1,18 +1,29 @@
 // Confirm Plate Screen
 // Step 1 of the seeding flow: Asks the user to physically install a seeding plate
 // and select the corresponding layout from a list.
+//
+// Adding a tray type is documented as a config-only change, so the list must cope
+// with any number of [[plates]] entries. It is laid out as a fixed 2x3 grid with
+// pagination (issue #14): buttons stay >=60px for gloved touch and every plate is
+// reachable without scrolling (kiosk rule: no scroll-only access to actions).
 
-import { Button, GridBox, VerticalBox } from "std-widgets.slint";
+import { Button } from "std-widgets.slint";
 
 export component ConfirmPlate inherits Rectangle {
     background: #c2c2c2;
 
     // List of available plate names, populated from the configuration in the backend.
     in property <[string]> plate-names;
-    
+
     // Callbacks to notify the Rust backend.
     callback cancel-clicked();      // Return to home screen
     callback plate-selected(int);   // Confirm selected plate index and proceed
+
+    // Pagination state. The grid shows `per-page` plates at a time; `current-page`
+    // is 0-based and clamped implicitly by the Prev/Next enabled guards below.
+    property <int> per-page: 6;     // 2 columns x 3 rows
+    property <int> page-count: Math.max(1, Math.ceil(root.plate-names.length / root.per-page));
+    property <int> current-page: 0;
 
     // Title instruction
     Text {
@@ -32,24 +43,57 @@ export component ConfirmPlate inherits Rectangle {
         source: @image-url("assets/images/paperpot.jpg");
     }
 
-    // Plate selection list
+    // Plate selection grid + pager, occupying the left column.
     Rectangle {
         x: 41px;
         width: 344px;
         height: 300px;
         y: (parent.height - self.height) / 2;
-        
-        // Dynamically creates a button for each plate defined in config.toml
-        VerticalLayout {
-            spacing: 12px;
-            alignment: center;
-            for name[i] in root.plate-names: Button {
-                text: name;
-                width: 160px;
-                height: 60px;
-                icon: @image-url("assets/icons/keypad.svg");
+
+        // One button per plate, but only those on the current page are shown.
+        // Positioned on a 2-column grid: column pitch 184px (160 button + 24 gap),
+        // row pitch 72px (60 + 12). Off-page buttons are hidden (and thus untappable).
+        for name[i] in root.plate-names: Button {
+            property <int> local-index: i - root.current-page * root.per-page;
+            visible: local-index >= 0 && local-index < root.per-page;
+            x: Math.mod(local-index, 2) * 184px;
+            y: Math.floor(local-index / 2) * 72px;
+            width: 160px;
+            height: 60px;
+            text: name;
+            icon: @image-url("assets/icons/keypad.svg");
+            clicked => {
+                root.plate-selected(i)
+            }
+        }
+
+        // Pager, only shown when the plates span more than one page.
+        if root.page-count > 1: HorizontalLayout {
+            y: 240px;
+            width: parent.width;
+            height: 60px;
+            spacing: 10px;
+            Button {
+                width: 100px;
+                text: @tr("Previous");
+                enabled: root.current-page > 0;
                 clicked => {
-                    root.plate-selected(i)
+                    root.current-page -= 1;
+                }
+            }
+            Text {
+                text: "\{root.current-page + 1} / \{root.page-count}";
+                font-size: 16px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            Button {
+                width: 100px;
+                text: @tr("Next");
+                enabled: root.current-page < root.page-count - 1;
+                clicked => {
+                    root.current-page += 1;
                 }
             }
         }

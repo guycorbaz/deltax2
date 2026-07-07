@@ -3,10 +3,11 @@
 // on screen (stdout is invisible in production), lets the operator pick one,
 // and re-runs the connect handshake from the UI (issue #4).
 
-import { Button } from "std-widgets.slint";
+import { AppButton } from "widgets.slint";
+import { Theme } from "theme.slint";
 
 export component SystemScreen inherits Rectangle {
-    background: #e19292; // Distinctive background for configuration mode
+    background: Theme.bg;
 
     // Detected serial ports (always includes the configured port), the
     // currently picked port, and the live connection state — all driven by
@@ -25,8 +26,9 @@ export component SystemScreen inherits Rectangle {
     Text {
         text: @tr("Serial connection");
         y: 20px;
-        font-size: 20px;
+        font-size: Theme.font-title;
         font-weight: 700;
+        color: Theme.text;
         horizontal-alignment: center;
         width: parent.width;
     }
@@ -41,12 +43,13 @@ export component SystemScreen inherits Rectangle {
             width: 14px;
             height: 14px;
             border-radius: 7px;
-            background: root.is-connected ? #4CAF50 : #F44336;
+            background: root.is-connected ? Theme.ok : Theme.danger;
             y: (parent.height - self.height) / 2;
         }
         Text {
             text: root.status-text;
-            font-size: 15px;
+            font-size: Theme.font-body;
+            color: Theme.text;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -58,8 +61,9 @@ export component SystemScreen inherits Rectangle {
         text: @tr("Detected ports:");
         x: 20px;
         y: 104px;
-        font-size: 15px;
+        font-size: Theme.font-body;
         font-weight: 700;
+        color: Theme.text-muted;
     }
     // Bounded to 208px and clipped so a long port list can never spill over
     // the footer within the 440px content area (enumeration is degraded on
@@ -76,13 +80,14 @@ export component SystemScreen inherits Rectangle {
             alignment: start;
             for port in root.com-ports: Rectangle {
                 height: 60px;
-                border-radius: 6px;
-                border-width: port == root.selected-port ? 3px : 1px;
-                border-color: port == root.selected-port ? #1b5e20 : #7a4a4a;
-                background: port == root.selected-port ? #a5d6a7 : #f3d0d0;
+                border-radius: Theme.radius-s;
+                border-width: port == root.selected-port ? 2px : 1px;
+                border-color: port == root.selected-port ? Theme.accent : Theme.border;
+                background: port == root.selected-port ? Theme.accent-soft : Theme.surface;
                 Text {
                     text: port;
-                    font-size: 16px;
+                    font-size: Theme.font-heading;
+                    color: Theme.text;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                     width: parent.width;
@@ -99,17 +104,18 @@ export component SystemScreen inherits Rectangle {
 
     // Action column on the right: Refresh the list, Reconnect (primary),
     // and Ok to leave. All ≥60px for gloved touch.
-    Button {
+    AppButton {
         x: 440px;
         y: 132px;
         width: 200px;
         height: 60px;
         text: @tr("Refresh ports");
+        icon: @image-url("assets/icons/settings-2.svg");
         clicked => {
             root.refresh-clicked()
         }
     }
-    Button {
+    AppButton {
         x: 440px;
         y: 202px;
         width: 200px;
@@ -124,11 +130,12 @@ export component SystemScreen inherits Rectangle {
 
     // Navigation Footer — anchored to the bottom-right corner, the shared
     // position for a screen's confirm/leave button.
-    Button {
+    AppButton {
         x: parent.width - self.width - 20px;
         y: parent.height - self.height - 15px;
         width: 160px;
         height: 60px;
+        primary: true;
         text: @tr("Ok");
         clicked => {
             root.ok-clicked()

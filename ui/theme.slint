@@ -1,0 +1,52 @@
+// theme.slint — shared design tokens for the whole UI.
+//
+// This is a `global` of compile-time visual CONSTANTS (colours, type sizes,
+// metrics), not application state — it centralizes the look so it stays
+// consistent and is tweakable in one place. The "no global for app state" rule
+// still holds: nothing mutable or backend-driven lives here.
+//
+// Palette: light theme with a green accent (fits the seeding/agriculture
+// context) and high contrast for daylight readability on the 7" panel.
+export global Theme {
+    // Surfaces
+    out property <color> bg: #edf1ee;          // app background
+    out property <color> surface: #ffffff;     // cards / panels
+    out property <color> surface-alt: #e4eae6; // subtle fills, hover/press
+    out property <color> border: #d5ddd7;
+    out property <color> border-strong: #c2ccc5;
+
+    // Text
+    out property <color> text: #1c2822;
+    out property <color> text-muted: #5f6d64;
+    out property <color> text-on-accent: #ffffff;
+
+    // Accent (green) + interaction states
+    out property <color> accent: #2f9e57;
+    out property <color> accent-press: #257e46;
+    out property <color> accent-soft: #d7efe0; // tinted background (selection)
+
+    // Semantic
+    out property <color> danger: #df474d;
+    out property <color> danger-press: #c53a40;
+    out property <color> warning: #e39a00;
+    out property <color> warning-soft: #ffe6ad;
+    out property <color> warning-text: #6b4a00;
+    out property <color> ok: #2f9e57;
+
+    // App bar (bottom status strip)
+    out property <color> appbar: #1f2a24;
+    out property <color> appbar-text: #e6ece8;
+    out property <color> appbar-text-muted: #9aada2;
+
+    // Typography
+    out property <length> font-title: 22px;
+    out property <length> font-heading: 16px;
+    out property <length> font-body: 15px;
+    out property <length> font-small: 13px;
+
+    // Metrics
+    out property <length> radius: 12px;
+    out property <length> radius-s: 8px;
+    out property <length> touch: 60px;   // shared touch-target height
+    out property <length> gap: 16px;
+}

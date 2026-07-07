@@ -2,7 +2,8 @@
 // This file defines the AppWindow which acts as the main container and navigator 
 // for all screens in the application.
 
-import { Button } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppButton } from "widgets.slint";
 import { MainScreen } from "mainscreen.slint";
 import { CalibrationScreen } from "calibrationscreen.slint";
 import { SystemScreen } from "systemscreen.slint";
@@ -62,7 +63,7 @@ export component AppWindow inherits Window {
     title: "DeltaX2";
     width: 800px;   // Native resolution for 7'' RPi touch screen
     height: 480px;  // Native resolution for 7'' RPi touch screen
-    background: #c2c2c2;
+    background: Theme.bg;
     
     // Kiosk mode for Raspberry Pi touchscreens.
     // When true, no-frame hides the OS title bar and borders.
@@ -294,41 +295,43 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Global Status Bar at the bottom of the window.
+        // Global status bar (app bar) at the bottom of the window.
         Rectangle {
-            height: 40px;
-            background: #333;
+            height: 44px;
+            background: Theme.appbar;
             HorizontalLayout {
-                padding: 10px;
+                padding-left: 16px;
+                padding-right: 16px;
                 spacing: 10px;
                 alignment: start;
-                
-                // Visual connection status LED
+
+                // Connection status LED
                 Rectangle {
                     width: 12px;
                     height: 12px;
                     border-radius: 6px;
-                    background: root.is-connected ? #4CAF50 : #F44336;
+                    background: root.is-connected ? Theme.ok : Theme.danger;
                     y: (parent.height - self.height) / 2;
                 }
-                
+
                 // Connection text label
                 Text {
                     text: root.is-connected ? @tr("Connected") : @tr("Disconnected");
-                    color: white;
-                    font-size: 14px;
+                    color: Theme.appbar-text;
+                    font-size: Theme.font-body;
+                    font-weight: 600;
                     vertical-alignment: center;
                 }
 
                 Rectangle {
                     width: 20px;
                 } // Spacer
-                
+
                 // Detailed status message (e.g., "Ready", "Error: ...", "Seeding complete")
                 Text {
                     text: root.status-text;
-                    color: #aaa;
-                    font-size: 14px;
+                    color: Theme.appbar-text-muted;
+                    font-size: Theme.font-body;
                     vertical-alignment: center;
                     overflow: elide;
                 }
@@ -344,7 +347,7 @@ export component AppWindow inherits Window {
     if (root.error-kind != ErrorKind.None): Rectangle {
         width: root.width;
         height: root.height;
-        background: #000000cc;
+        background: #0b120ecc;
 
         // Swallow touches on the backdrop so controls underneath stay inert.
         TouchArea { }
@@ -354,34 +357,36 @@ export component AppWindow inherits Window {
             y: (parent.height - self.height) / 2;
             width: 620px;
             height: 300px;
-            background: #7f1d1d;
-            border-radius: 14px;
+            background: Theme.surface;
+            border-radius: Theme.radius;
             border-width: 2px;
-            border-color: #ef5350;
+            border-color: Theme.danger;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000066;
 
             VerticalLayout {
-                padding: 26px;
+                padding: 28px;
                 spacing: 18px;
 
                 Text {
                     text: @tr("Error");
-                    color: white;
-                    font-size: 22px;
+                    color: Theme.danger;
+                    font-size: Theme.font-title;
                     font-weight: 700;
                     horizontal-alignment: center;
                 }
                 Text {
                     text: root.error-text;
-                    color: white;
-                    font-size: 16px;
+                    color: Theme.text;
+                    font-size: Theme.font-heading;
                     wrap: word-wrap;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                     vertical-stretch: 1;
                 }
-                Button {
+                AppButton {
+                    primary: true;
                     text: @tr("Dismiss");
-                    height: 60px;
                     clicked => {
                         root.error-kind = ErrorKind.None;
                     }

@@ -2,10 +2,11 @@
 // Displayed during the active automated seeding process.
 // It provides controls to pause, continue, or emergency stop the operation.
 
-import { Button } from "std-widgets.slint";
+import { AppButton } from "widgets.slint";
+import { Theme } from "theme.slint";
 
 export component SeedingScreen inherits Rectangle {
-    background: #c2c2c2;
+    background: Theme.bg;
 
     // Callbacks to control the automated process.
     callback stop-clicked();      // Terminate process and return home
@@ -29,9 +30,9 @@ export component SeedingScreen inherits Rectangle {
     // itself, not only in the transient status bar.
     Text {
         text: root.paused ? @tr("Seeding paused") : @tr("Seeding in progress");
-        color: root.paused ? #8a5a00 : black;
-        y: 30px;
-        font-size: 20px;
+        color: root.paused ? Theme.warning-text : Theme.text;
+        y: 32px;
+        font-size: Theme.font-title;
         font-weight: 700;
         horizontal-alignment: center;
         width: parent.width;
@@ -40,8 +41,9 @@ export component SeedingScreen inherits Rectangle {
     // Live progress readout
     Text {
         text: root.pot-total == 0 ? @tr("Starting…") : @tr("Pot {} / {}", root.pot-done, root.pot-total);
-        y: 80px;
-        font-size: 16px;
+        y: 82px;
+        font-size: Theme.font-heading;
+        color: Theme.text-muted;
         horizontal-alignment: center;
         width: parent.width;
     }
@@ -49,17 +51,17 @@ export component SeedingScreen inherits Rectangle {
     // Amber "paused" badge — an unmistakable, finger-height marker that the job
     // is held and awaiting a resume.
     if root.paused: Rectangle {
-        y: 120px;
+        y: 124px;
         x: (parent.width - self.width) / 2;
         width: 220px;
         height: 44px;
-        background: #ffd27f;
+        background: Theme.warning-soft;
         border-radius: 22px;
         border-width: 2px;
-        border-color: #8a5a00;
+        border-color: Theme.warning;
         Text {
             text: @tr("⏸  Paused");
-            color: #5a3a00;
+            color: Theme.warning-text;
             font-size: 18px;
             font-weight: 700;
             horizontal-alignment: center;
@@ -71,26 +73,25 @@ export component SeedingScreen inherits Rectangle {
     // Pending hint while the request is in flight but not yet confirmed.
     if root.transition: Text {
         text: root.paused ? @tr("Resuming…") : @tr("Pausing…");
-        y: 120px;
-        font-size: 16px;
-        color: #555;
+        y: 124px;
+        font-size: Theme.font-heading;
+        color: Theme.text-muted;
         horizontal-alignment: center;
         width: parent.width;
     }
 
     // --- Control Buttons ---
-    // Positioned absolutely so they sit at the bottom: a HorizontalBox with an
-    // explicit `y` but no explicit height fills the parent and pushes its
-    // content off the bottom edge. Three 70px buttons (30px gaps → 270 total)
-    // are centered, matching the footer layout of every other screen.
+    // Positioned absolutely at the bottom, centered. Three 70px buttons (30px
+    // gaps → 270 total). Stop is the destructive action (danger/red).
 
     // Stop Button — always available: the operator must be able to abort
     // regardless of pause/transition state.
-    Button {
+    AppButton {
         x: (parent.width - 270px) / 2;
         y: parent.height - self.height - 15px;
         width: 70px;
         height: 60px;
+        danger: true;
         icon: @image-url("assets/icons/square.svg");
         clicked => {
             root.stop-clicked()
@@ -98,7 +99,7 @@ export component SeedingScreen inherits Rectangle {
     }
 
     // Pause Button — only while running (not already paused, not mid-request).
-    Button {
+    AppButton {
         x: (parent.width - 270px) / 2 + 100px;
         y: parent.height - self.height - 15px;
         width: 70px;
@@ -111,11 +112,12 @@ export component SeedingScreen inherits Rectangle {
     }
 
     // Play / Continue Button — only while paused (not mid-request).
-    Button {
+    AppButton {
         x: (parent.width - 270px) / 2 + 200px;
         y: parent.height - self.height - 15px;
         width: 70px;
         height: 60px;
+        primary: true;
         icon: @image-url("assets/icons/play-circle.svg");
         enabled: root.paused && !root.transition;
         clicked => {

@@ -2,51 +2,54 @@
 // The initial home screen of the application. Provides quick access to seeding,
 // calibration, and configuration modes.
 
-import { Button, VerticalBox } from "std-widgets.slint";
+import { AppButton } from "widgets.slint";
+import { Theme } from "theme.slint";
 
 export component MainScreen inherits Rectangle {
-    background: #c2c2c2;
+    background: Theme.bg;
 
     // Navigation callbacks to be handled by the AppWindow state machine.
     callback seed-clicked();           // Navigate to Seeding Flow
     callback calibration-clicked();    // Navigate to Calibration Screen
     callback configuration-clicked();  // Navigate to System Configuration
 
-    // --- Sidebar Menu ---
-    VerticalBox {
-        alignment: center;
-        width: 160px;
+    // --- Menu (left) ---
+    // Seeding is the primary action (filled accent); the others are secondary.
+    // Positioned absolutely so heights are honoured exactly.
+    AppButton {
         x: 70px;
-        spacing: 15px;
-
-        Button {
-            width: 160px;
-            height: 60px;
-            text: @tr("Seeding");
-            icon: @image-url("assets/icons/funnel.svg");
-            clicked => {
-                root.seed-clicked()
-            }
+        y: 108px;
+        width: 240px;
+        height: 64px;
+        primary: true;
+        text: @tr("Seeding");
+        icon: @image-url("assets/icons/funnel.svg");
+        clicked => {
+            root.seed-clicked()
         }
+    }
 
-        Button {
-            width: 160px;
-            height: 60px;
-            text: @tr("Calibration");
-            icon: @image-url("assets/icons/move.svg");
-            clicked => {
-                root.calibration-clicked()
-            }
+    AppButton {
+        x: 70px;
+        y: 188px;
+        width: 240px;
+        height: 64px;
+        text: @tr("Calibration");
+        icon: @image-url("assets/icons/move.svg");
+        clicked => {
+            root.calibration-clicked()
         }
+    }
 
-        Button {
-            width: 160px;
-            height: 60px;
-            text: @tr("Configuration");
-            icon: @image-url("assets/icons/settings-2.svg");
-            clicked => {
-                root.configuration-clicked()
-            }
+    AppButton {
+        x: 70px;
+        y: 268px;
+        width: 240px;
+        height: 64px;
+        text: @tr("Configuration");
+        icon: @image-url("assets/icons/settings-2.svg");
+        clicked => {
+            root.configuration-clicked()
         }
     }
 

@@ -7,10 +7,11 @@
 // pagination (issue #14): buttons stay >=60px for gloved touch and every plate is
 // reachable without scrolling (kiosk rule: no scroll-only access to actions).
 
-import { Button } from "std-widgets.slint";
+import { AppButton } from "widgets.slint";
+import { Theme } from "theme.slint";
 
 export component ConfirmPlate inherits Rectangle {
-    background: #c2c2c2;
+    background: Theme.bg;
 
     // List of available plate names, populated from the configuration in the backend.
     in property <[string]> plate-names;
@@ -29,8 +30,9 @@ export component ConfirmPlate inherits Rectangle {
     Text {
         text: @tr("Install the seeding plate");
         y: 30px;
-        font-size: 20px;
+        font-size: Theme.font-title;
         font-weight: 700;
+        color: Theme.text;
         horizontal-alignment: center;
         width: parent.width;
     }
@@ -55,7 +57,7 @@ export component ConfirmPlate inherits Rectangle {
         // One button per plate, but only those on the current page are shown.
         // Positioned on a 2-column grid: column pitch 184px (160 button + 24 gap),
         // row pitch 72px (60 + 12). Off-page buttons are hidden (and thus untappable).
-        for name[i] in root.plate-names: Button {
+        for name[i] in root.plate-names: AppButton {
             property <int> local-index: i - root.current-page * root.per-page;
             visible: local-index >= 0 && local-index < root.per-page;
             x: Math.mod(local-index, 2) * 184px;
@@ -70,40 +72,45 @@ export component ConfirmPlate inherits Rectangle {
         }
 
         // Pager, only shown when the plates span more than one page.
-        if root.page-count > 1: HorizontalLayout {
+        if root.page-count > 1: AppButton {
+            x: 0px;
             y: 216px;
-            width: parent.width;
+            width: 100px;
             height: 60px;
-            spacing: 10px;
-            Button {
-                width: 100px;
-                text: @tr("Previous");
-                enabled: root.current-page > 0;
-                clicked => {
-                    root.current-page -= 1;
-                }
+            text: @tr("Previous");
+            enabled: root.current-page > 0;
+            clicked => {
+                root.current-page -= 1;
             }
-            Text {
-                text: "\{root.current-page + 1} / \{root.page-count}";
-                font-size: 16px;
-                font-weight: 700;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-            Button {
-                width: 100px;
-                text: @tr("Next");
-                enabled: root.current-page < root.page-count - 1;
-                clicked => {
-                    root.current-page += 1;
-                }
+        }
+        if root.page-count > 1: Text {
+            x: 100px;
+            y: 216px;
+            width: 144px;
+            height: 60px;
+            text: "\{root.current-page + 1} / \{root.page-count}";
+            font-size: Theme.font-heading;
+            font-weight: 700;
+            color: Theme.text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        if root.page-count > 1: AppButton {
+            x: 244px;
+            y: 216px;
+            width: 100px;
+            height: 60px;
+            text: @tr("Next");
+            enabled: root.current-page < root.page-count - 1;
+            clicked => {
+                root.current-page += 1;
             }
         }
     }
 
     // Navigation Footer — anchored to the bottom-right corner, the shared
     // position for a screen's confirm/leave button (the plate image clears it).
-    Button {
+    AppButton {
         x: parent.width - self.width - 20px;
         y: parent.height - self.height - 15px;
         width: 160px;

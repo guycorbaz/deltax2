@@ -1,0 +1,72 @@
+// widgets.slint — shared, theme-styled UI components.
+
+import { Theme } from "theme.slint";
+
+// A touch-friendly button with a flat, modern look and clear variants.
+//
+// Variants (via booleans): `primary` (filled green, the main action),
+// `danger` (filled red, destructive), or the default secondary (white surface
+// with a border). Supports an optional `icon` (recoloured to match the text)
+// and `text`. Defaults to the shared 60px touch height; callers may override
+// `width`/`height`. Set `enabled: false` to grey it out and block taps.
+export component AppButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> primary;
+    in property <bool> danger;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    property <bool> filled: root.enabled && (root.primary || root.danger);
+    property <color> fill:
+        !root.enabled ? Theme.surface-alt
+        : root.danger ? (touch.pressed ? Theme.danger-press : Theme.danger)
+        : root.primary ? (touch.pressed ? Theme.accent-press : Theme.accent)
+        : (touch.pressed ? Theme.surface-alt : Theme.surface);
+    property <color> fg:
+        !root.enabled ? Theme.text-muted
+        : root.filled ? Theme.text-on-accent
+        : Theme.text;
+
+    height: Theme.touch;
+    min-width: Theme.touch;
+    background: root.fill;
+    border-radius: Theme.radius-s;
+    border-width: root.filled ? 0px : 1px;
+    border-color: root.enabled ? Theme.border-strong : Theme.border;
+    // Subtle lift for the filled (accent/danger) actions.
+    drop-shadow-blur: root.filled ? 6px : 0px;
+    drop-shadow-color: root.filled ? #0000002a : #00000000;
+    drop-shadow-offset-y: root.filled ? 2px : 0px;
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 8px;
+        padding-left: 10px;
+        padding-right: 10px;
+
+        if root.icon.width > 0: Image {
+            source: root.icon;
+            colorize: root.fg;
+            width: 22px;
+            height: 22px;
+            vertical-alignment: center;
+        }
+
+        if root.text != "": Text {
+            text: root.text;
+            color: root.fg;
+            font-size: Theme.font-body;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+}

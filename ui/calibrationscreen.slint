@@ -4,13 +4,13 @@
 //
 // Layout note: the usable content area is 800x440 (the 40px status bar sits
 // below it), so every section is positioned to fit within 440px height with a
-// clear gap above the footer — no overlap between the axis pads and the
-// Home/Ok buttons. All buttons are 60px tall, matching every other screen.
+// clear gap above the footer. All buttons are 60px tall.
 
-import { Button } from "std-widgets.slint";
+import { AppButton } from "widgets.slint";
+import { Theme } from "theme.slint";
 
 export component CalibrationScreen inherits Rectangle {
-    background: #c2c2c2;
+    background: Theme.bg;
 
     // Head position properties received from the backend (for display only).
     in-out property <string> head-x: "0.000";
@@ -45,8 +45,9 @@ export component CalibrationScreen inherits Rectangle {
             text: @tr("Position");
             y: 0px;
             width: parent.width;
-            font-size: 14px;
+            font-size: Theme.font-small;
             font-weight: 700;
+            color: Theme.text-muted;
             horizontal-alignment: center;
         }
 
@@ -54,14 +55,15 @@ export component CalibrationScreen inherits Rectangle {
             y: 20px;
             width: parent.width;
             height: 50px;
-            background: root.background;
-            border-color: #929292;
+            background: Theme.surface;
+            border-color: Theme.border;
             border-width: 1px;
-            border-radius: 5px;
+            border-radius: Theme.radius-s;
             Text {
-                text: "X: " + root.head-x + "  Y: " + root.head-y + "  Z: " + root.head-z + "  Cart: " + root.head-cart;
+                text: "X: " + root.head-x + "   Y: " + root.head-y + "   Z: " + root.head-z + "   Cart: " + root.head-cart;
                 vertical-alignment: center;
                 horizontal-alignment: center;
+                color: Theme.text;
                 font-weight: 700;
             }
         }
@@ -77,15 +79,15 @@ export component CalibrationScreen inherits Rectangle {
             text: @tr("Step (mm)");
             y: 0px;
             width: parent.width;
-            font-size: 14px;
+            font-size: Theme.font-small;
             font-weight: 700;
+            color: Theme.text-muted;
             horizontal-alignment: center;
         }
 
-        // Step buttons. The active step is highlighted (primary/accent) so the
-        // operator can tell whether the next jog moves 0.01mm or 5mm (#16). Each
-        // button is 60px — the shared touch-target height across all screens.
-        Button {
+        // The active step is filled (primary/accent) so the operator can tell
+        // whether the next jog moves 0.01mm or 5mm (#16).
+        AppButton {
             x: 0px;
             y: 22px;
             width: 60px;
@@ -97,7 +99,7 @@ export component CalibrationScreen inherits Rectangle {
             }
         }
 
-        Button {
+        AppButton {
             x: 73px;
             y: 22px;
             width: 60px;
@@ -109,7 +111,7 @@ export component CalibrationScreen inherits Rectangle {
             }
         }
 
-        Button {
+        AppButton {
             x: 146px;
             y: 22px;
             width: 60px;
@@ -121,7 +123,7 @@ export component CalibrationScreen inherits Rectangle {
             }
         }
 
-        Button {
+        AppButton {
             x: 219px;
             y: 22px;
             width: 60px;
@@ -139,32 +141,36 @@ export component CalibrationScreen inherits Rectangle {
         x: 80px + (280px - self.width) / 2;
         y: 94px;
         text: "Y";
-        font-size: 14px;
+        font-size: Theme.font-small;
         font-weight: 700;
+        color: Theme.text-muted;
     }
 
     Text {
         x: 80px - self.width - 10px;
         y: 116px + (232px - self.height) / 2;
         text: "X";
-        font-size: 14px;
+        font-size: Theme.font-small;
         font-weight: 700;
+        color: Theme.text-muted;
     }
 
     Text {
         x: 437px + (110px - self.width) / 2;
         y: 94px;
         text: "Z";
-        font-size: 14px;
+        font-size: Theme.font-small;
         font-weight: 700;
+        color: Theme.text-muted;
     }
 
     Text {
         x: 610px + (110px - self.width) / 2;
         y: 94px;
         text: "Cart";
-        font-size: 14px;
+        font-size: Theme.font-small;
         font-weight: 700;
+        color: Theme.text-muted;
     }
 
     // --- XY Controller Section ---
@@ -173,10 +179,11 @@ export component CalibrationScreen inherits Rectangle {
         y: 116px;
         width: 280px;
         height: 232px;
-        border-color: #929292;
+        background: Theme.surface;
+        border-color: Theme.border;
         border-width: 1px;
-        border-radius: 5px;
-        Button {
+        border-radius: Theme.radius;
+        AppButton {
             x: (parent.width - self.width) / 2;
             y: 12px;
             width: 60px;
@@ -188,7 +195,7 @@ export component CalibrationScreen inherits Rectangle {
             }
         }
 
-        Button {
+        AppButton {
             x: 10px;
             y: (parent.height - self.height) / 2;
             width: 60px;
@@ -207,13 +214,13 @@ export component CalibrationScreen inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             text: @tr("Moving…");
-            color: #8a5a00;
-            font-size: 14px;
+            color: Theme.warning-text;
+            font-size: Theme.font-small;
             font-weight: 700;
             visible: root.busy;
         }
 
-        Button {
+        AppButton {
             x: parent.width - self.width - 10px;
             y: (parent.height - self.height) / 2;
             width: 60px;
@@ -225,7 +232,7 @@ export component CalibrationScreen inherits Rectangle {
             }
         }
 
-        Button {
+        AppButton {
             x: (parent.width - self.width) / 2;
             y: parent.height - self.height - 12px;
             width: 60px;
@@ -244,10 +251,11 @@ export component CalibrationScreen inherits Rectangle {
         y: 116px;
         width: 110px;
         height: 232px;
-        border-color: #929292;
+        background: Theme.surface;
+        border-color: Theme.border;
         border-width: 1px;
-        border-radius: 5px;
-        Button {
+        border-radius: Theme.radius;
+        AppButton {
             x: (parent.width - self.width) / 2;
             y: 12px;
             width: 60px;
@@ -261,7 +269,7 @@ export component CalibrationScreen inherits Rectangle {
 
         // Center intentionally empty — see the XY pad note; homing is global.
 
-        Button {
+        AppButton {
             x: (parent.width - self.width) / 2;
             y: parent.height - self.height - 12px;
             width: 60px;
@@ -280,10 +288,11 @@ export component CalibrationScreen inherits Rectangle {
         y: 116px;
         width: 110px;
         height: 232px;
-        border-color: #929292;
+        background: Theme.surface;
+        border-color: Theme.border;
         border-width: 1px;
-        border-radius: 5px;
-        Button {
+        border-radius: Theme.radius;
+        AppButton {
             x: (parent.width - self.width) / 2;
             y: 12px;
             width: 60px;
@@ -295,7 +304,7 @@ export component CalibrationScreen inherits Rectangle {
             }
         }
 
-        Button {
+        AppButton {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             width: 60px;
@@ -307,7 +316,7 @@ export component CalibrationScreen inherits Rectangle {
             }
         }
 
-        Button {
+        AppButton {
             x: (parent.width - self.width) / 2;
             y: parent.height - self.height - 12px;
             width: 60px;
@@ -325,7 +334,7 @@ export component CalibrationScreen inherits Rectangle {
     // opposite bottom corners (action left, leave right) — clearly not a pair.
     // Global homing is clearly labeled so it is not read as a per-axis action
     // either (#16).
-    Button {
+    AppButton {
         x: 20px;
         y: parent.height - self.height - 15px;
         width: 200px;
@@ -338,11 +347,12 @@ export component CalibrationScreen inherits Rectangle {
         }
     }
 
-    Button {
+    AppButton {
         x: parent.width - self.width - 20px;
         y: parent.height - self.height - 15px;
         width: 160px;
         height: 60px;
+        primary: true;
         text: @tr("Ok");
         clicked => {
             root.ok-clicked()

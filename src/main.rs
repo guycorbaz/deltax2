@@ -358,6 +358,9 @@ fn spawn_robot_worker(
                             Some(false),
                         ),
                     }
+                    // Reflect the position resynced from the firmware on connect
+                    // (issue #9), and the fresh link state, in the UI.
+                    push_position(&ui, &robot);
                 }
 
                 RobotCommand::MoveAxis(axis, d) => {

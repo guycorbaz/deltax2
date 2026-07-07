@@ -167,9 +167,14 @@ executed.
 \section{How the application uses the protocol}
 
 At connection time the application sends \code{IsDelta} and requires the
-\code{YesDelta} answer within two seconds. Every command it issues afterwards
-carries a \code{FEEDBACK:ok} suffix, and the next command is only sent after the
-robot has echoed \code{ok}. Jog moves from the calibration screen are wrapped in
-\code{G91}~\dots~\code{G90} so they execute as relative displacements; homing uses
-\code{G28}. The \code{M03}/\code{M05} end-effector commands are reserved for the
-per-pot seeding action (Appendix~\ref{app:limitations}).
+\code{YesDelta} answer within two seconds. It then issues \code{Position} to read
+the head coordinates back from the firmware and adopt them as its tracked
+position, so a robot that was moved by hand while disconnected is never driven
+against a stale estimate; if no position is returned, the application keeps the
+state ``unknown'' and requires a homing before the first jog. Every command it
+issues afterwards carries a \code{FEEDBACK:ok} suffix, and the next command is
+only sent after the robot has echoed \code{ok}. Jog moves from the calibration
+screen are wrapped in \code{G91}~\dots~\code{G90} so they execute as relative
+displacements; homing uses \code{G28}. The \code{M03}/\code{M05} end-effector
+commands are reserved for the per-pot seeding action
+(Appendix~\ref{app:limitations}).

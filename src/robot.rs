@@ -218,6 +218,37 @@ fn has_ok_line(buffer: &str) -> bool {
     buffer.lines().any(|l| l.trim().eq_ignore_ascii_case("ok"))
 }
 
+/// Parses a firmware `Position` reply into the Cartesian `(x, y, z)` triplet.
+///
+/// The reply format is `X:<val> Y:<val> Z:<val> W:<val> U:<val>` (see the
+/// G-code appendix). Parsing scans each line for `KEY:VALUE` tokens and
+/// succeeds only when `X`, `Y` and `Z` are all present and numeric; any other
+/// axis (`W`, `U`) is ignored, since only the Cartesian axes are resynced
+/// (issue #9). Returns `None` for a line that lacks a full X/Y/Z triplet, so a
+/// partial or unrelated line is never mistaken for a position.
+fn parse_position(text: &str) -> Option<(f32, f32, f32)> {
+    for line in text.lines() {
+        let (mut x, mut y, mut z) = (None, None, None);
+        for token in line.split_whitespace() {
+            if let Some((key, value)) = token.split_once(':') {
+                let Ok(parsed) = value.parse::<f32>() else {
+                    continue;
+                };
+                match key.to_ascii_uppercase().as_str() {
+                    "X" => x = Some(parsed),
+                    "Y" => y = Some(parsed),
+                    "Z" => z = Some(parsed),
+                    _ => {}
+                }
+            }
+        }
+        if let (Some(x), Some(y), Some(z)) = (x, y, z) {
+            return Some((x, y, z));
+        }
+    }
+    None
+}
+
 /// Enumerates the physical axes of the robot.
 #[derive(Debug, Clone, Copy)]
 pub enum Axis {
@@ -409,7 +440,9 @@ impl<T: Transport> DeltaRobot<T> {
 
     /// Connects to the robot hardware and verifies its identity.
     ///
-    /// It sends the `IsDelta` command and waits for a `YESDELTA` response.
+    /// It sends the `IsDelta` command and waits for a `YESDELTA` response, then
+    /// resyncs the tracked position from the firmware (issue #9) so a robot
+    /// moved by hand while disconnected is not driven against a stale position.
     ///
     /// # Arguments
     ///
@@ -429,7 +462,17 @@ impl<T: Transport> DeltaRobot<T> {
         self.transport.open(port, baud_rate)?;
 
         match self.handshake() {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                // The robot may have been moved by hand while disconnected, so
+                // the dead-reckoned position cannot be trusted. Read the real
+                // one back from the firmware (issue #9). If that fails, leave
+                // the state desynchronized so a homing is required before any
+                // jog — never let the software limits guard a stale position.
+                if self.query_position().is_err() {
+                    self.desynchronized = true;
+                }
+                Ok(())
+            }
             Err(e) => {
                 // Do not hold the OS handle on a device that failed the
                 // handshake — it may not be the robot at all.
@@ -437,6 +480,54 @@ impl<T: Transport> DeltaRobot<T> {
                 Err(e.context(format!("Device on {} did not answer IsDelta", port)))
             }
         }
+    }
+
+    /// Reads the head position back from the firmware with the `Position`
+    /// command and adopts it as the tracked X/Y/Z, clearing the
+    /// desynchronized state on success (issue #9).
+    ///
+    /// Only the Cartesian axes are resynced; they are the ones the software
+    /// limits guard. The rotation ("cart") axis stays software-only until real
+    /// cart control lands (issue #7), so any `W`/`U` fields are ignored.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the write fails, the link is lost (the port is then
+    /// closed), or no parseable `X: Y: Z:` line arrives within 2 seconds.
+    fn query_position(&mut self) -> Result<()> {
+        // A stale line from before must not be read as the current position.
+        self.transport.flush_input();
+        self.transport.write_data(b"Position\n")?;
+
+        let mut buffer = String::new();
+        let start = std::time::Instant::now();
+        while start.elapsed() < std::time::Duration::from_secs(2) {
+            match self.transport.read_data() {
+                Ok(data) => {
+                    if !data.is_empty() {
+                        buffer.push_str(&String::from_utf8_lossy(&data));
+                        // Parse only the portion up to the last newline, so a
+                        // partial trailing read cannot be mistaken for a
+                        // complete coordinate line.
+                        let complete = buffer.rfind('\n').map_or("", |i| &buffer[..i]);
+                        if let Some((x, y, z)) = parse_position(complete) {
+                            self.actual_x = x;
+                            self.actual_y = y;
+                            self.actual_z = z;
+                            self.desynchronized = false;
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.transport.close();
+                    self.desynchronized = true;
+                    return Err(e.context("serial link lost while reading position"));
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        Err(anyhow::anyhow!("no position response within 2s"))
     }
 
     /// Sends the `IsDelta` identity query and waits for the `YesDelta` answer.
@@ -476,8 +567,9 @@ impl<T: Transport> DeltaRobot<T> {
 
     /// Disconnects from the robot, closing the serial port.
     ///
-    /// The logical position tracking is left untouched; a reconnect should
-    /// be followed by homing before trusting any movement (see issue #9).
+    /// The logical position tracking is left untouched; the next
+    /// [`connect`](Self::connect) resyncs it from the firmware (or, failing
+    /// that, requires homing before the next move) — see issue #9.
     pub fn disconnect(&mut self) {
         self.transport.close();
     }
@@ -1112,11 +1204,48 @@ mod tests {
     // --- Wire-contract characterization (through the mock transport) ---
 
     #[test]
-    fn connect_performs_isdelta_handshake() {
-        let mut robot = DeltaRobot::with_transport(MockTransport::scripted(&["YesDelta\n"]));
+    fn connect_performs_isdelta_handshake_then_reads_position() {
+        // Handshake answer, then the Position reply resynced on connect (#9).
+        let mut robot = DeltaRobot::with_transport(MockTransport::scripted(&[
+            "YesDelta\n",
+            "X:10.5 Y:-20.0 Z:-150.0 W:0.0 U:0.0\n",
+        ]));
         robot.connect("/dev/mock", 115_200).unwrap();
-        assert_eq!(robot.transport_ref().written_str(), "IsDelta\n");
+        // The wire contract: identity query, then position query.
+        assert_eq!(robot.transport_ref().written_str(), "IsDelta\nPosition\n");
         assert!(robot.is_connected());
+        // The tracked position now matches the firmware, not the (0,0,0) default.
+        let (x, y, z, _) = robot.get_position();
+        assert_eq!((x, y, z), (10.5, -20.0, -150.0));
+        // A known position means moves are allowed without a fresh homing.
+        assert!(!robot.is_desynchronized());
+    }
+
+    #[test]
+    fn parse_position_reads_xyz_and_ignores_other_axes() {
+        assert_eq!(
+            parse_position("X:10.5 Y:-20.0 Z:-150.0 W:1.0 U:2.0\n"),
+            Some((10.5, -20.0, -150.0))
+        );
+        // Cart/other axes and surrounding noise do not matter.
+        assert_eq!(parse_position("  X:0 Y:0 Z:0  \n"), Some((0.0, 0.0, 0.0)));
+    }
+
+    #[test]
+    fn parse_position_rejects_incomplete_or_unrelated_lines() {
+        assert_eq!(parse_position("X:10.0 Y:5.0\n"), None); // no Z
+        assert_eq!(parse_position("ok\n"), None);
+        assert_eq!(parse_position(""), None);
+        assert_eq!(parse_position("X:foo Y:1 Z:2\n"), None); // X not numeric
+    }
+
+    #[test]
+    fn parse_position_takes_the_first_complete_triplet() {
+        // A leading report line is skipped in favor of the coordinate line.
+        assert_eq!(
+            parse_position("Homing done\nX:1.0 Y:2.0 Z:3.0\n"),
+            Some((1.0, 2.0, 3.0))
+        );
     }
 
     #[test]

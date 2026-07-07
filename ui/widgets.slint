@@ -39,28 +39,28 @@ export component AppButton inherits Rectangle {
     drop-shadow-color: root.filled ? #0000002a : #00000000;
     drop-shadow-offset-y: root.filled ? 2px : 0px;
 
-    HorizontalLayout {
-        alignment: center;
-        spacing: 8px;
-        padding-left: 10px;
-        padding-right: 10px;
+    // The label is centred across the whole button; the icon is pinned to the
+    // left edge (aesthetic choice) and vertically centred. When the button has
+    // no text (e.g. the jog arrows) the icon is centred instead. Absolute
+    // positioning keeps the icon reliably centred vertically regardless of the
+    // button height.
+    if root.text != "": Text {
+        width: parent.width;
+        text: root.text;
+        color: root.fg;
+        font-size: Theme.font-body;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
 
-        if root.icon.width > 0: Image {
-            source: root.icon;
-            colorize: root.fg;
-            width: 22px;
-            height: 22px;
-            vertical-alignment: center;
-        }
-
-        if root.text != "": Text {
-            text: root.text;
-            color: root.fg;
-            font-size: Theme.font-body;
-            font-weight: 600;
-            vertical-alignment: center;
-            horizontal-alignment: center;
-        }
+    if root.icon.width > 0: Image {
+        source: root.icon;
+        colorize: root.fg;
+        width: 22px;
+        height: 22px;
+        x: root.text != "" ? 16px : (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
     }
 
     touch := TouchArea {

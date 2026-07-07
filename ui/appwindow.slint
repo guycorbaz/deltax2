@@ -2,6 +2,7 @@
 // This file defines the AppWindow which acts as the main container and navigator 
 // for all screens in the application.
 
+import { Button } from "std-widgets.slint";
 import { MainScreen } from "mainscreen.slint";
 import { CalibrationScreen } from "calibrationscreen.slint";
 import { SystemScreen } from "systemscreen.slint";
@@ -37,6 +38,12 @@ export component AppWindow inherits Window {
     // Status properties displayed in the header/footer of all screens.
     in-out property <string> status-text: @tr("Initializing...");
     in-out property <bool> is-connected: false;
+
+    // Persistent, full-text error surface for failures needing operator
+    // action (worker death, a seeding job that died mid-plate). Distinct from
+    // the transient, elided status bar. Non-empty raises a modal banner; the
+    // Dismiss button clears it. See the Slint rules in project-context.md.
+    in-out property <string> error-text: "";
 
     // Real-time robot head position (tracked by the backend).
     in-out property <string> head-x: "0.000";
@@ -207,6 +214,60 @@ export component AppWindow inherits Window {
                     font-size: 14px;
                     vertical-alignment: center;
                     overflow: elide;
+                }
+            }
+        }
+    }
+
+    // Modal error banner, rendered above every screen (sibling of the layout,
+    // so it is not constrained by it). Shown only when error-text is set:
+    // full word-wrapped text and a Dismiss action, over a backdrop that
+    // swallows touches so the underlying UI cannot be operated until the
+    // operator acknowledges the failure.
+    if (root.error-text != ""): Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #000000cc;
+
+        // Swallow touches on the backdrop so controls underneath stay inert.
+        TouchArea { }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 620px;
+            height: 300px;
+            background: #7f1d1d;
+            border-radius: 14px;
+            border-width: 2px;
+            border-color: #ef5350;
+
+            VerticalLayout {
+                padding: 26px;
+                spacing: 18px;
+
+                Text {
+                    text: @tr("Error");
+                    color: white;
+                    font-size: 22px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: root.error-text;
+                    color: white;
+                    font-size: 16px;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    vertical-stretch: 1;
+                }
+                Button {
+                    text: @tr("Dismiss");
+                    height: 60px;
+                    clicked => {
+                        root.error-text = "";
+                    }
                 }
             }
         }

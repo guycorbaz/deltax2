@@ -321,11 +321,10 @@ export component CalibrationScreen inherits Rectangle {
     }
 
     // --- Footer ---
-    // "Home all (G28)" is a motion action, "Ok" is navigation. They are kept
-    // apart so the homing button is not mistaken for part of the Ok/leave
-    // control: Home all sits in the bottom-left corner, Ok stays centered like
-    // every other screen's footer. Global homing is clearly labeled so it is
-    // not read as a per-axis action either (#16).
+    // "Home all (G28)" is a motion action, "Ok" is navigation, so they sit in
+    // opposite bottom corners (action left, leave right) — clearly not a pair.
+    // Global homing is clearly labeled so it is not read as a per-axis action
+    // either (#16).
     Button {
         x: 20px;
         y: parent.height - self.height - 15px;
@@ -340,7 +339,7 @@ export component CalibrationScreen inherits Rectangle {
     }
 
     Button {
-        x: (parent.width - self.width) / 2;
+        x: parent.width - self.width - 20px;
         y: parent.height - self.height - 15px;
         width: 160px;
         height: 60px;

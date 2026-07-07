@@ -101,9 +101,10 @@ export component ConfirmPlate inherits Rectangle {
         }
     }
 
-    // Navigation Footer
+    // Navigation Footer — anchored to the bottom-right corner, the shared
+    // position for a screen's confirm/leave button (the plate image clears it).
     Button {
-        x: (parent.width - self.width) / 2;
+        x: parent.width - self.width - 20px;
         y: parent.height - self.height - 15px;
         width: 160px;
         height: 60px;

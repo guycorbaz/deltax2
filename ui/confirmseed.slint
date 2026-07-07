@@ -30,13 +30,13 @@ export component ConfirmSeed inherits Rectangle {
     }
 
     // --- Action Buttons ---
-    // Positioned absolutely (not in a HorizontalBox): a layout with an explicit
-    // `y` but no explicit height fills the parent, which pushed these buttons
-    // away from the bottom. Plain 60px buttons anchored to `parent.height` sit
-    // at the bottom, consistent with every other screen's footer.
-    // The pair (160 + 30 gap + 160 = 350) is centered horizontally.
+    // Footer convention across all screens: the confirm button (Ok) is anchored
+    // to the bottom-right corner; Cancel sits immediately to its left with a
+    // small gap (30px), so the pair stays together but Ok is always in the same
+    // corner. Plain 60px buttons anchored to parent.height (a HorizontalBox with
+    // an explicit y but no height fills the parent and drifts off the bottom).
     Button {
-        x: (parent.width - 350px) / 2;
+        x: parent.width - 370px; // 20 right margin + 160 (Ok) + 30 gap + 160 (self)
         y: parent.height - self.height - 15px;
         width: 160px;
         height: 60px;
@@ -48,7 +48,7 @@ export component ConfirmSeed inherits Rectangle {
     }
 
     Button {
-        x: (parent.width - 350px) / 2 + 190px;
+        x: parent.width - self.width - 20px;
         y: parent.height - self.height - 15px;
         width: 160px;
         height: 60px;

@@ -43,12 +43,14 @@ export component ConfirmPlate inherits Rectangle {
         source: @image-url("assets/images/paperpot.jpg");
     }
 
-    // Plate selection grid + pager, occupying the left column.
+    // Plate selection grid + pager, occupying the left column. Anchored near
+    // the top (not vertically centered) and sized to 276px so the pager clears
+    // the footer within the 440px content area, even on a full second page.
     Rectangle {
         x: 41px;
         width: 344px;
-        height: 300px;
-        y: (parent.height - self.height) / 2;
+        height: 276px;
+        y: 64px;
 
         // One button per plate, but only those on the current page are shown.
         // Positioned on a 2-column grid: column pitch 184px (160 button + 24 gap),
@@ -69,7 +71,7 @@ export component ConfirmPlate inherits Rectangle {
 
         // Pager, only shown when the plates span more than one page.
         if root.page-count > 1: HorizontalLayout {
-            y: 240px;
+            y: 216px;
             width: parent.width;
             height: 60px;
             spacing: 10px;

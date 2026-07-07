@@ -61,11 +61,15 @@ export component SystemScreen inherits Rectangle {
         font-size: 15px;
         font-weight: 700;
     }
+    // Bounded to 208px and clipped so a long port list can never spill over
+    // the footer within the 440px content area (enumeration is degraded on
+    // Linux, so the list is 1-2 entries in practice).
     Rectangle {
         x: 20px;
         y: 132px;
         width: 380px;
-        height: 260px;
+        height: 208px;
+        clip: true;
 
         VerticalLayout {
             spacing: 10px;

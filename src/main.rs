@@ -118,9 +118,11 @@ fn main() -> anyhow::Result<()> {
     // it at least until the connection result overwrites it (a persistent
     // error surface is tracked in issue #8).
     if let Some(error) = config_errors.first() {
-        ui.set_status_text(format!("Config error: {}", error).into());
+        ui.set_status_kind(StatusKind::ConfigError);
+        ui.set_status_arg(error.clone().into());
     } else {
-        ui.set_status_text("Connecting...".into());
+        ui.set_status_kind(StatusKind::Connecting);
+        ui.set_status_arg("".into());
     }
     ui.set_is_connected(false);
     dispatch(
@@ -208,7 +210,8 @@ fn main() -> anyhow::Result<()> {
             // Immediate pending feedback: the worker settles it to
             // "Connected" / "... failed" when the handshake returns.
             ui.set_is_connected(false);
-            ui.set_status_text(format!("Connecting to {}...", port).into());
+            ui.set_status_kind(StatusKind::ConnectingTo);
+            ui.set_status_arg(port.clone().into());
             dispatch(&t, RobotCommand::Connect { port, baud_rate }, &uh);
         }
     });
@@ -228,7 +231,8 @@ fn main() -> anyhow::Result<()> {
         if let Some(plate) = valid_plates.get(id as usize) {
             *sel.borrow_mut() = Some(plate.clone());
             if let Some(ui) = uh.upgrade() {
-                ui.set_status_text(format!("Selected plate: {}", plate.name).into());
+                ui.set_status_kind(StatusKind::SelectedPlate);
+                ui.set_status_arg(plate.name.clone().into());
             }
         }
     });
@@ -245,7 +249,9 @@ fn main() -> anyhow::Result<()> {
         let plate = sel.borrow().clone();
         if let Some(plate) = plate {
             if let Some(ui) = uh.upgrade() {
-                ui.set_seeding_progress("Starting...".into());
+                // pot-total == 0 makes the seeding screen show "Starting…".
+                ui.set_pot_done(0);
+                ui.set_pot_total(0);
                 // Fresh job: clear any pause state left visible from before.
                 ui.set_seeding_paused(false);
                 ui.set_seeding_transition(false);
@@ -255,7 +261,8 @@ fn main() -> anyhow::Result<()> {
             dispatch(&t, RobotCommand::SeedPlate { plate, job_id }, &uh);
         } else if let Some(ui) = uh.upgrade() {
             // Should not happen through the normal flow, but guard anyway.
-            ui.set_status_text("No plate selected".into());
+            ui.set_status_kind(StatusKind::NoPlateSelected);
+            ui.set_status_arg("".into());
         }
     });
 
@@ -271,7 +278,8 @@ fn main() -> anyhow::Result<()> {
         // still waiting in the command queue.
         c.request_abort(job.get());
         if let Some(ui) = uh.upgrade() {
-            ui.set_status_text("Stopping...".into());
+            ui.set_status_kind(StatusKind::Stopping);
+            ui.set_status_arg("".into());
         }
     });
 
@@ -280,7 +288,8 @@ fn main() -> anyhow::Result<()> {
     ui.on_pause_seeding(move || {
         c.request_pause();
         if let Some(ui) = uh.upgrade() {
-            ui.set_status_text("Seeding paused".into());
+            ui.set_status_kind(StatusKind::SeedingPaused);
+            ui.set_status_arg("".into());
         }
     });
 
@@ -289,7 +298,8 @@ fn main() -> anyhow::Result<()> {
     ui.on_continue_seeding(move || {
         c.resume();
         if let Some(ui) = uh.upgrade() {
-            ui.set_status_text("Seeding resumed".into());
+            ui.set_status_kind(StatusKind::SeedingResumed);
+            ui.set_status_arg("".into());
         }
     });
 
@@ -340,10 +350,11 @@ fn spawn_robot_worker(
                     // we must not leak the old one.
                     robot.disconnect();
                     match robot.connect(&port, baud_rate) {
-                        Ok(()) => set_status(&ui, "Connected".into(), Some(true)),
+                        Ok(()) => set_status(&ui, StatusKind::Connected, String::new(), Some(true)),
                         Err(e) => set_status(
                             &ui,
-                            format!("Connection to {} failed: {}", port, e),
+                            StatusKind::ConnectionFailed,
+                            format!("{}: {}", port, e),
                             Some(false),
                         ),
                     }
@@ -351,31 +362,31 @@ fn spawn_robot_worker(
 
                 RobotCommand::MoveAxis(axis, d) => {
                     match robot.move_axis(axis, d) {
-                        Ok(()) => set_status(&ui, "Move OK".into(), None),
-                        Err(e) => set_status(&ui, format!("Error: {}", e), None),
+                        Ok(()) => set_status(&ui, StatusKind::MoveOk, String::new(), None),
+                        Err(e) => set_status(&ui, StatusKind::MoveError, e.to_string(), None),
                     }
                     push_position(&ui, &robot);
                 }
 
                 RobotCommand::MoveCart(d) => {
                     if let Err(e) = robot.move_cart(d) {
-                        set_status(&ui, format!("Error moving Cart: {}", e), None);
+                        set_status(&ui, StatusKind::CartError, e.to_string(), None);
                     }
                     push_position(&ui, &robot);
                 }
 
                 RobotCommand::HomeXyz => {
-                    set_status(&ui, "Homing...".into(), None);
+                    set_status(&ui, StatusKind::Homing, String::new(), None);
                     match robot.home_xyz() {
-                        Ok(()) => set_status(&ui, "Homing complete".into(), None),
-                        Err(e) => set_status(&ui, format!("Error homing XYZ: {}", e), None),
+                        Ok(()) => set_status(&ui, StatusKind::HomingComplete, String::new(), None),
+                        Err(e) => set_status(&ui, StatusKind::HomingError, e.to_string(), None),
                     }
                     push_position(&ui, &robot);
                 }
 
                 RobotCommand::HomeCart => {
                     if let Err(e) = robot.home_cart() {
-                        set_status(&ui, format!("Error homing Cart: {}", e), None);
+                        set_status(&ui, StatusKind::CartHomingError, e.to_string(), None);
                     }
                     push_position(&ui, &robot);
                 }
@@ -386,7 +397,7 @@ fn spawn_robot_worker(
                     // job ids at or below it, so a stop registered for this
                     // very job (while it waited in the queue) still holds.
                     control.begin_job();
-                    set_status(&ui, format!("Seeding plate: {}", plate.name), None);
+                    set_status(&ui, StatusKind::SeedingPlate, plate.name.clone(), None);
 
                     let progress_ui = ui.clone();
                     let pause_ui = ui.clone();
@@ -396,7 +407,8 @@ fn spawn_robot_worker(
                         &control,
                         move |done, total| {
                             let _ = progress_ui.upgrade_in_event_loop(move |ui| {
-                                ui.set_seeding_progress(format!("Pot {} / {}", done, total).into());
+                                ui.set_pot_done(done);
+                                ui.set_pot_total(total);
                             });
                         },
                         // Worker-confirmed pause transitions: clear the pending
@@ -411,19 +423,19 @@ fn spawn_robot_worker(
 
                     match result {
                         Ok(SeedOutcome::Completed) => {
-                            set_status(&ui, "Seeding complete".into(), None);
+                            set_status(&ui, StatusKind::SeedingComplete, String::new(), None);
                             leave_seeding_screen(&ui);
                         }
                         Ok(SeedOutcome::Aborted) => {
                             // The stop button already navigated back to Main.
-                            set_status(&ui, "Seeding stopped".into(), None);
+                            set_status(&ui, StatusKind::SeedingStopped, String::new(), None);
                         }
                         Err(e) => {
                             // A job that died mid-plate needs operator action
                             // (inspect the tray, re-home, retry) — full text on
                             // the persistent banner, not the elided status bar.
-                            set_status(&ui, "Seeding failed".into(), None);
-                            set_error(&ui, format!("Seeding failed: {}", e));
+                            set_status(&ui, StatusKind::SeedingFailed, String::new(), None);
+                            set_error(&ui, ErrorKind::SeedingFailed, e.to_string());
                             leave_seeding_screen(&ui);
                         }
                     }
@@ -436,9 +448,11 @@ fn spawn_robot_worker(
     tx
 }
 
-/// Operator-facing message shown when the robot worker thread can no longer
+/// Console (SSH) diagnostic printed when the robot worker thread can no longer
 /// be reached (a command send failed). The worker owns the only handle to the
 /// serial port, so once it is gone the robot is uncontrollable until restart.
+/// The operator-facing, translated version lives in `appwindow.slint` under
+/// `ErrorKind::WorkerDead` (issue #18).
 const WORKER_DEAD_MSG: &str = "Robot control has stopped unexpectedly. Restart the application — the robot cannot be controlled until then.";
 
 /// Sends a command to the worker from the UI thread, raising the persistent
@@ -452,33 +466,38 @@ fn dispatch(tx: &mpsc::Sender<RobotCommand>, cmd: RobotCommand, ui: &slint::Weak
     if tx.send(cmd).is_err() {
         eprintln!("{}", WORKER_DEAD_MSG);
         if let Some(ui) = ui.upgrade() {
-            ui.set_error_text(WORKER_DEAD_MSG.into());
+            ui.set_error_kind(ErrorKind::WorkerDead);
         }
     }
 }
 
 /// Raises the persistent, full-text error surface (a dismissible banner) for
 /// failures that require operator attention, distinct from the transient
-/// one-line status bar. Mirrors to the console for SSH debugging.
+/// one-line status bar. The UI renders `kind` (+ any dynamic `arg`) through
+/// `@tr`, so the operator-facing text is translated (issue #18); the console
+/// mirror stays English for SSH debugging.
 ///
 /// Safe to call from the worker thread: the UI mutation is scheduled onto
 /// the Slint event loop.
-fn set_error(ui: &slint::Weak<AppWindow>, msg: String) {
-    println!("{}", msg);
+fn set_error(ui: &slint::Weak<AppWindow>, kind: ErrorKind, arg: String) {
+    println!("error: {:?} {}", kind, arg);
     let _ = ui.upgrade_in_event_loop(move |ui| {
-        ui.set_error_text(msg.into());
+        ui.set_error_kind(kind);
+        ui.set_error_arg(arg.into());
     });
 }
 
-/// Shows a status message in the UI status bar (and mirrors it to the
-/// console for SSH debugging). Optionally updates the connection indicator.
+/// Shows a status code in the UI status bar (and mirrors it to the console for
+/// SSH debugging). The UI turns `kind` (+ any dynamic `arg`) into translated
+/// text with `@tr` (issue #18). Optionally updates the connection indicator.
 ///
 /// Safe to call from the worker thread: the UI mutation is scheduled onto
 /// the Slint event loop.
-fn set_status(ui: &slint::Weak<AppWindow>, msg: String, connected: Option<bool>) {
-    println!("{}", msg);
+fn set_status(ui: &slint::Weak<AppWindow>, kind: StatusKind, arg: String, connected: Option<bool>) {
+    println!("status: {:?} {}", kind, arg);
     let _ = ui.upgrade_in_event_loop(move |ui| {
-        ui.set_status_text(msg.into());
+        ui.set_status_kind(kind);
+        ui.set_status_arg(arg.into());
         if let Some(c) = connected {
             ui.set_is_connected(c);
         }

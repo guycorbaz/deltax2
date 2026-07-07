@@ -20,6 +20,43 @@ export enum ScreenState {
     Seeding         // Active seeding process display
 }
 
+// Status codes pushed by the Rust backend instead of raw English strings, so
+// the status bar text is produced by @tr on the UI side and gets translated
+// (issue #18). Any dynamic part (a port name, an error detail, a plate name)
+// travels separately in `status-arg`; the enum only selects the template.
+export enum StatusKind {
+    Initializing,       // no arg
+    Connecting,         // no arg — initial/implicit connection
+    ConnectingTo,       // arg: port name
+    Connected,          // no arg
+    ConnectionFailed,   // arg: "<port>: <detail>"
+    MoveOk,             // no arg
+    MoveError,          // arg: detail
+    CartError,          // arg: detail
+    Homing,             // no arg
+    HomingComplete,     // no arg
+    HomingError,        // arg: detail
+    CartHomingError,    // arg: detail
+    ConfigError,        // arg: detail
+    SelectedPlate,      // arg: plate name
+    NoPlateSelected,    // no arg
+    Stopping,           // no arg
+    SeedingPlate,       // arg: plate name
+    SeedingComplete,    // no arg
+    SeedingStopped,     // no arg
+    SeedingFailed,      // no arg — short status; full detail goes to the banner
+    SeedingPaused,      // no arg
+    SeedingResumed,     // no arg
+    Empty               // no arg — cleared status
+}
+
+// Codes for the persistent modal error banner, same rationale as StatusKind.
+export enum ErrorKind {
+    None,           // no banner
+    WorkerDead,     // no arg — fixed operator message
+    SeedingFailed   // arg: failure detail
+}
+
 // Global window component. It handles screen switching and bridges Rust callbacks to UI components.
 export component AppWindow inherits Window {
     title: "DeltaX2";
@@ -35,15 +72,59 @@ export component AppWindow inherits Window {
     // Tracks the currently displayed screen.
     in-out property <ScreenState> current-screen: ScreenState.Main;
 
-    // Status properties displayed in the header/footer of all screens.
-    in-out property <string> status-text: @tr("Initializing...");
+    // Status surface. The backend sets a code (+ optional dynamic arg); the
+    // displayed text is produced here with @tr so it is translated (issue #18).
+    in-out property <StatusKind> status-kind: StatusKind.Initializing;
+    in-out property <string> status-arg: "";
+    // Derived, translated status line — read by the status bar and the
+    // Configuration screen. Kept as a property named `status-text` so readers
+    // are unchanged.
+    property <string> status-text: root.status-line(root.status-kind, root.status-arg);
     in-out property <bool> is-connected: false;
 
-    // Persistent, full-text error surface for failures needing operator
-    // action (worker death, a seeding job that died mid-plate). Distinct from
-    // the transient, elided status bar. Non-empty raises a modal banner; the
+    // Persistent, full-text error surface for failures needing operator action
+    // (worker death, a seeding job that died mid-plate). Distinct from the
+    // transient, elided status bar. A non-None code raises a modal banner; the
     // Dismiss button clears it. See the Slint rules in project-context.md.
-    in-out property <string> error-text: "";
+    in-out property <ErrorKind> error-kind: ErrorKind.None;
+    in-out property <string> error-arg: "";
+    property <string> error-text: root.error-line(root.error-kind, root.error-arg);
+
+    // Maps a status code (+ dynamic arg) to the translated line shown to the
+    // operator. Templates live here so translators reach them through @tr.
+    pure function status-line(kind: StatusKind, arg: string) -> string {
+        if (kind == StatusKind.Initializing) { return @tr("Initializing..."); }
+        if (kind == StatusKind.Connecting) { return @tr("Connecting..."); }
+        if (kind == StatusKind.ConnectingTo) { return @tr("Connecting to {}...", arg); }
+        if (kind == StatusKind.Connected) { return @tr("Connected"); }
+        if (kind == StatusKind.ConnectionFailed) { return @tr("Connection failed — {}", arg); }
+        if (kind == StatusKind.MoveOk) { return @tr("Move OK"); }
+        if (kind == StatusKind.MoveError) { return @tr("Error: {}", arg); }
+        if (kind == StatusKind.CartError) { return @tr("Error moving Cart: {}", arg); }
+        if (kind == StatusKind.Homing) { return @tr("Homing..."); }
+        if (kind == StatusKind.HomingComplete) { return @tr("Homing complete"); }
+        if (kind == StatusKind.HomingError) { return @tr("Error homing XYZ: {}", arg); }
+        if (kind == StatusKind.CartHomingError) { return @tr("Error homing Cart: {}", arg); }
+        if (kind == StatusKind.ConfigError) { return @tr("Config error: {}", arg); }
+        if (kind == StatusKind.SelectedPlate) { return @tr("Selected plate: {}", arg); }
+        if (kind == StatusKind.NoPlateSelected) { return @tr("No plate selected"); }
+        if (kind == StatusKind.Stopping) { return @tr("Stopping..."); }
+        if (kind == StatusKind.SeedingPlate) { return @tr("Seeding plate: {}", arg); }
+        if (kind == StatusKind.SeedingComplete) { return @tr("Seeding complete"); }
+        if (kind == StatusKind.SeedingStopped) { return @tr("Seeding stopped"); }
+        if (kind == StatusKind.SeedingFailed) { return @tr("Seeding failed"); }
+        if (kind == StatusKind.SeedingPaused) { return @tr("Seeding paused"); }
+        if (kind == StatusKind.SeedingResumed) { return @tr("Seeding resumed"); }
+        return "";
+    }
+
+    pure function error-line(kind: ErrorKind, arg: string) -> string {
+        if (kind == ErrorKind.WorkerDead) {
+            return @tr("Robot control has stopped unexpectedly. Restart the application — the robot cannot be controlled until then.");
+        }
+        if (kind == ErrorKind.SeedingFailed) { return @tr("Seeding failed: {}", arg); }
+        return "";
+    }
 
     // True while a calibration command (jog or homing) is being executed by
     // the worker. The Calibration screen disables its motion buttons while set,
@@ -79,8 +160,12 @@ export component AppWindow inherits Window {
     callback pause-seeding();      // Suspend the seeding job before the next pot
     callback continue-seeding();   // Resume a paused seeding job
 
-    // Progress of the running seeding job (e.g., "Pot 12 / 77"), set by the backend.
-    in-out property <string> seeding-progress: "";
+    // Progress of the running seeding job as raw counts (issue #18): the
+    // backend pushes numbers, the SeedingScreen formats them with @tr so the
+    // "Pot X / Y" template is translatable. `pot-total == 0` means the job is
+    // starting (no pot processed yet).
+    in-out property <int> pot-done: 0;
+    in-out property <int> pot-total: 0;
 
     // Seeding pause state (issue #17). `seeding-paused` is the worker-confirmed
     // state: true only once the seeding loop has actually parked on a pause
@@ -188,7 +273,8 @@ export component AppWindow inherits Window {
 
             // Seeding Flow: Active Process
             if (root.current-screen == ScreenState.Seeding): SeedingScreen {
-                progress-text: root.seeding-progress;
+                pot-done: root.pot-done;
+                pot-total: root.pot-total;
                 paused: root.seeding-paused;
                 transition: root.seeding-transition;
                 stop-clicked => {
@@ -251,11 +337,11 @@ export component AppWindow inherits Window {
     }
 
     // Modal error banner, rendered above every screen (sibling of the layout,
-    // so it is not constrained by it). Shown only when error-text is set:
+    // so it is not constrained by it). Shown only when an error code is set:
     // full word-wrapped text and a Dismiss action, over a backdrop that
     // swallows touches so the underlying UI cannot be operated until the
     // operator acknowledges the failure.
-    if (root.error-text != ""): Rectangle {
+    if (root.error-kind != ErrorKind.None): Rectangle {
         width: root.width;
         height: root.height;
         background: #000000cc;
@@ -297,7 +383,7 @@ export component AppWindow inherits Window {
                     text: @tr("Dismiss");
                     height: 60px;
                     clicked => {
-                        root.error-text = "";
+                        root.error-kind = ErrorKind.None;
                     }
                 }
             }

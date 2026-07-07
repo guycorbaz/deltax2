@@ -12,8 +12,11 @@ export component SeedingScreen inherits Rectangle {
     callback pause-clicked();     // Suspend current movement
     callback continue-clicked();  // Resume suspended process
 
-    // Job progress text provided by the backend (e.g., "Pot 12 / 77").
-    in property <string> progress-text;
+    // Job progress as raw counts from the backend; formatted here with @tr so
+    // the "Pot X / Y" line is translatable (issue #18). pot-total == 0 means the
+    // job is still starting (homing, first move) before any pot is done.
+    in property <int> pot-done;
+    in property <int> pot-total;
 
     // Pause state (issue #17). `paused` is the worker-confirmed state; `transition`
     // is the pending window between the operator's tap and that confirmation (the
@@ -36,7 +39,7 @@ export component SeedingScreen inherits Rectangle {
 
     // Live progress readout
     Text {
-        text: root.progress-text;
+        text: root.pot-total == 0 ? @tr("Starting…") : @tr("Pot {} / {}", root.pot-done, root.pot-total);
         y: 80px;
         font-size: 16px;
         horizontal-alignment: center;

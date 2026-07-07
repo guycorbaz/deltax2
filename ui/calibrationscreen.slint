@@ -16,6 +16,11 @@ export component CalibrationScreen inherits Rectangle {
     // The amount the robot moves on each button click.
     in-out property <float> step-size: 0.01;
 
+    // True while a jog/homing command is running on the worker. Motion buttons
+    // disable themselves so taps cannot pile up faster than the robot executes
+    // them (issue #13); the step-size and Ok buttons stay usable.
+    in property <bool> busy;
+
     // Callbacks to notify the Rust backend of user interactions.
     callback ok-clicked();
     callback move-x(float);
@@ -155,6 +160,7 @@ export component CalibrationScreen inherits Rectangle {
             width: 65px;
             height: 65px;
             icon: @image-url("assets/icons/arrow-up.svg");
+            enabled: !root.busy;
             clicked => {
                 root.move-y(root.step-size)
             }
@@ -166,6 +172,7 @@ export component CalibrationScreen inherits Rectangle {
             width: 65px;
             height: 65px;
             icon: @image-url("assets/icons/arrow-left.svg");
+            enabled: !root.busy;
             clicked => {
                 root.move-x(-root.step-size)
             }
@@ -173,6 +180,16 @@ export component CalibrationScreen inherits Rectangle {
 
         // Center is intentionally empty: homing is global (G28) and lives in a
         // clearly labeled footer button, not inside a single-axis pad (#16).
+        // It doubles as the "move in progress" indicator (issue #13).
+        Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: @tr("Moving…");
+            color: #8a5a00;
+            font-size: 14px;
+            font-weight: 700;
+            visible: root.busy;
+        }
 
         Button {
             x: parent.width - self.width - 10px;
@@ -180,6 +197,7 @@ export component CalibrationScreen inherits Rectangle {
             width: 65px;
             height: 65px;
             icon: @image-url("assets/icons/arrow-right.svg");
+            enabled: !root.busy;
             clicked => {
                 root.move-x(root.step-size)
             }
@@ -191,6 +209,7 @@ export component CalibrationScreen inherits Rectangle {
             width: 65px;
             height: 65px;
             icon: @image-url("assets/icons/arrow-down.svg");
+            enabled: !root.busy;
             clicked => {
                 root.move-y(-root.step-size)
             }
@@ -220,6 +239,7 @@ export component CalibrationScreen inherits Rectangle {
             width: 65px;
             height: 65px;
             icon: @image-url("assets/icons/arrow-up.svg");
+            enabled: !root.busy;
             clicked => {
                 root.move-z(root.step-size)
             }
@@ -233,6 +253,7 @@ export component CalibrationScreen inherits Rectangle {
             width: 65px;
             height: 65px;
             icon: @image-url("assets/icons/arrow-down.svg");
+            enabled: !root.busy;
             clicked => {
                 root.move-z(-root.step-size)
             }
@@ -262,6 +283,7 @@ export component CalibrationScreen inherits Rectangle {
             width: 65px;
             height: 65px;
             icon: @image-url("assets/icons/arrow-up.svg");
+            enabled: !root.busy;
             clicked => {
                 root.move-cart(root.step-size)
             }
@@ -273,6 +295,7 @@ export component CalibrationScreen inherits Rectangle {
             width: 65px;
             height: 65px;
             icon: @image-url("assets/icons/home.svg");
+            enabled: !root.busy;
             clicked => {
                 root.home-cart()
             }
@@ -284,6 +307,7 @@ export component CalibrationScreen inherits Rectangle {
             width: 65px;
             height: 65px;
             icon: @image-url("assets/icons/arrow-down.svg");
+            enabled: !root.busy;
             clicked => {
                 root.move-cart(-root.step-size)
             }
@@ -300,6 +324,7 @@ export component CalibrationScreen inherits Rectangle {
         height: 60px;
         icon: @image-url("assets/icons/home.svg");
         text: @tr("Home all (G28)");
+        enabled: !root.busy;
         clicked => {
             root.home-xyz()
         }

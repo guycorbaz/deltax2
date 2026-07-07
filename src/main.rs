@@ -489,6 +489,10 @@ fn set_status(ui: &slint::Weak<AppWindow>, msg: String, connected: Option<bool>)
 /// UI after each processed command, so a link lost during a command flips
 /// the connection LED without any extra plumbing.
 ///
+/// It also clears the calibration `jog-busy` flag: this runs after every
+/// jog/homing command completes, which is exactly when the Calibration screen
+/// should re-enable its motion buttons (issue #13).
+///
 /// Safe to call from the worker thread.
 fn push_position(ui: &slint::Weak<AppWindow>, robot: &DeltaRobot) {
     let (x, y, z, cart) = robot.get_position();
@@ -499,6 +503,7 @@ fn push_position(ui: &slint::Weak<AppWindow>, robot: &DeltaRobot) {
         ui.set_head_z(format!("{:.3}", z).into());
         ui.set_head_cart(format!("{:.3}", cart).into());
         ui.set_is_connected(connected);
+        ui.set_jog_busy(false);
     });
 }
 

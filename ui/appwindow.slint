@@ -45,6 +45,13 @@ export component AppWindow inherits Window {
     // Dismiss button clears it. See the Slint rules in project-context.md.
     in-out property <string> error-text: "";
 
+    // True while a calibration command (jog or homing) is being executed by
+    // the worker. The Calibration screen disables its motion buttons while set,
+    // so a rapid tapper cannot queue an unbounded backlog of moves that keeps
+    // the robot going long after they stop (issue #13). The worker clears it
+    // when the command completes (see push_position in main.rs).
+    in-out property <bool> jog-busy: false;
+
     // Real-time robot head position (tracked by the backend).
     in-out property <string> head-x: "0.000";
     in-out property <string> head-y: "0.000";
@@ -105,26 +112,36 @@ export component AppWindow inherits Window {
                 head-y: root.head-y;
                 head-z: root.head-z;
                 head-cart: root.head-cart;
+                busy: root.jog-busy;
                 ok-clicked => {
                     root.current-screen = ScreenState.Main
                 }
+                // Each motion sets the pending flag synchronously so the buttons
+                // disable before the next tap can be registered; the worker
+                // clears it when the command finishes.
                 move-x(v) => {
-                    root.move-x(v)
+                    root.jog-busy = true;
+                    root.move-x(v);
                 }
                 move-y(v) => {
-                    root.move-y(v)
+                    root.jog-busy = true;
+                    root.move-y(v);
                 }
                 move-z(v) => {
-                    root.move-z(v)
+                    root.jog-busy = true;
+                    root.move-z(v);
                 }
                 move-cart(v) => {
-                    root.move-cart(v)
+                    root.jog-busy = true;
+                    root.move-cart(v);
                 }
                 home-xyz => {
-                    root.home-xyz()
+                    root.jog-busy = true;
+                    root.home-xyz();
                 }
                 home-cart => {
-                    root.home-cart()
+                    root.jog-busy = true;
+                    root.home-cart();
                 }
             }
 

@@ -2,7 +2,7 @@
 // Displayed during the active automated seeding process.
 // It provides controls to pause, continue, or emergency stop the operation.
 
-import { Button, HorizontalBox } from "std-widgets.slint";
+import { Button } from "std-widgets.slint";
 
 export component SeedingScreen inherits Rectangle {
     background: #c2c2c2;
@@ -79,43 +79,47 @@ export component SeedingScreen inherits Rectangle {
     }
 
     // --- Control Buttons ---
-    HorizontalBox {
-        y: parent.height - self.height - 15px; // Standardized bottom gap
-        width: 300px;
-        x: (parent.width - self.width) / 2;
-        spacing: 30px;
+    // Positioned absolutely so they sit at the bottom: a HorizontalBox with an
+    // explicit `y` but no explicit height fills the parent and pushes its
+    // content off the bottom edge. Three 70px buttons (30px gaps → 270 total)
+    // are centered, matching the footer layout of every other screen.
 
-        // Stop Button — always available: the operator must be able to abort
-        // regardless of pause/transition state.
-        Button {
-            width: 70px;
-            height: 60px;
-            icon: @image-url("assets/icons/square.svg");
-            clicked => {
-                root.stop-clicked()
-            }
+    // Stop Button — always available: the operator must be able to abort
+    // regardless of pause/transition state.
+    Button {
+        x: (parent.width - 270px) / 2;
+        y: parent.height - self.height - 15px;
+        width: 70px;
+        height: 60px;
+        icon: @image-url("assets/icons/square.svg");
+        clicked => {
+            root.stop-clicked()
         }
+    }
 
-        // Pause Button — only while running (not already paused, not mid-request).
-        Button {
-            width: 70px;
-            height: 60px;
-            icon: @image-url("assets/icons/pause-circle.svg");
-            enabled: !root.paused && !root.transition;
-            clicked => {
-                root.pause-clicked()
-            }
+    // Pause Button — only while running (not already paused, not mid-request).
+    Button {
+        x: (parent.width - 270px) / 2 + 100px;
+        y: parent.height - self.height - 15px;
+        width: 70px;
+        height: 60px;
+        icon: @image-url("assets/icons/pause-circle.svg");
+        enabled: !root.paused && !root.transition;
+        clicked => {
+            root.pause-clicked()
         }
+    }
 
-        // Play / Continue Button — only while paused (not mid-request).
-        Button {
-            width: 70px;
-            height: 60px;
-            icon: @image-url("assets/icons/play-circle.svg");
-            enabled: root.paused && !root.transition;
-            clicked => {
-                root.continue-clicked()
-            }
+    // Play / Continue Button — only while paused (not mid-request).
+    Button {
+        x: (parent.width - 270px) / 2 + 200px;
+        y: parent.height - self.height - 15px;
+        width: 70px;
+        height: 60px;
+        icon: @image-url("assets/icons/play-circle.svg");
+        enabled: root.paused && !root.transition;
+        clicked => {
+            root.continue-clicked()
         }
     }
 }

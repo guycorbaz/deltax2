@@ -2,7 +2,7 @@
 // Step 2 of the seeding flow: Asks the user to load seeds into the hopper/robot
 // before starting the automated process.
 
-import { Button, HorizontalBox } from "std-widgets.slint";
+import { Button } from "std-widgets.slint";
 
 export component ConfirmSeed inherits Rectangle {
     background: #c2c2c2;
@@ -30,29 +30,31 @@ export component ConfirmSeed inherits Rectangle {
     }
 
     // --- Action Buttons ---
-    HorizontalBox {
-        y: parent.height - self.height - 15px; // Standardized bottom gap
-        width: 350px;
-        x: (parent.width - self.width) / 2;
-        spacing: 30px;
-
-        Button {
-            width: 160px;
-            height: 60px;
-            text: @tr("Cancel");
-            icon: @image-url("assets/icons/close.svg");
-            clicked => {
-                root.cancel-clicked()
-            }
+    // Positioned absolutely (not in a HorizontalBox): a layout with an explicit
+    // `y` but no explicit height fills the parent, which pushed these buttons
+    // away from the bottom. Plain 60px buttons anchored to `parent.height` sit
+    // at the bottom, consistent with every other screen's footer.
+    // The pair (160 + 30 gap + 160 = 350) is centered horizontally.
+    Button {
+        x: (parent.width - 350px) / 2;
+        y: parent.height - self.height - 15px;
+        width: 160px;
+        height: 60px;
+        text: @tr("Cancel");
+        icon: @image-url("assets/icons/close.svg");
+        clicked => {
+            root.cancel-clicked()
         }
+    }
 
-        Button {
-            width: 160px;
-            height: 60px;
-            text: @tr("Ok");
-            clicked => {
-                root.ok-clicked()
-            }
+    Button {
+        x: (parent.width - 350px) / 2 + 190px;
+        y: parent.height - self.height - 15px;
+        width: 160px;
+        height: 60px;
+        text: @tr("Ok");
+        clicked => {
+            root.ok-clicked()
         }
     }
 }

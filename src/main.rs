@@ -165,10 +165,42 @@ fn main() -> anyhow::Result<()> {
 
     // --- System / Utility Handlers ---
 
-    ui.on_list_com_ports(move || {
-        // Enumerate detected serial ports and print them to console for debugging.
-        let ports = SerialCommunication::list_ports();
-        println!("Available ports: {:?}", ports);
+    // --- Serial port management (Configuration screen) ---
+    // The port list and reconnect action live on a touch surface, because
+    // stdout is invisible in kiosk mode. Enumeration is degraded on Linux
+    // (no libudev), so the configured port is always kept in the list as the
+    // authoritative fallback the operator can reconnect to.
+
+    let configured_port = config.serial.port.clone();
+    let baud_rate = config.serial.baud_rate;
+
+    // Seed the picker with the configured port and an initial enumeration so
+    // the Configuration screen is usable before the first Refresh.
+    ui.set_selected_port(configured_port.clone().into());
+    ui.set_com_ports(Rc::new(slint::VecModel::from(enumerate_ports(&configured_port))).into());
+
+    let uh = ui.as_weak();
+    let cfg_port = configured_port.clone();
+    ui.on_refresh_com_ports(move || {
+        if let Some(ui) = uh.upgrade() {
+            ui.set_com_ports(Rc::new(slint::VecModel::from(enumerate_ports(&cfg_port))).into());
+        }
+    });
+
+    let t = tx.clone();
+    let uh = ui.as_weak();
+    ui.on_reconnect(move || {
+        if let Some(ui) = uh.upgrade() {
+            let port = ui.get_selected_port().to_string();
+            if port.is_empty() {
+                return;
+            }
+            // Immediate pending feedback: the worker settles it to
+            // "Connected" / "... failed" when the handshake returns.
+            ui.set_is_connected(false);
+            ui.set_status_text(format!("Connecting to {}...", port).into());
+            let _ = t.send(RobotCommand::Connect { port, baud_rate });
+        }
     });
 
     // --- Seeding Flow ---
@@ -254,6 +286,22 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Builds the serial-port list shown on the Configuration screen.
+///
+/// The configured port always comes first and is guaranteed present, even
+/// when OS enumeration returns nothing (degraded on Linux without libudev):
+/// it is the authoritative path the operator must always be able to
+/// reconnect to. Any additionally detected ports follow, deduplicated.
+fn enumerate_ports(configured_port: &str) -> Vec<slint::SharedString> {
+    let mut ports: Vec<slint::SharedString> = vec![configured_port.into()];
+    for p in SerialCommunication::list_ports() {
+        if p != configured_port {
+            ports.push(p.into());
+        }
+    }
+    ports
+}
+
 /// Spawns the robot worker thread and returns the command sender.
 ///
 /// The worker owns the `DeltaRobot` (and through it the serial port) for its
@@ -274,6 +322,10 @@ fn spawn_robot_worker(
         while let Ok(cmd) = rx.recv() {
             match cmd {
                 RobotCommand::Connect { port, baud_rate } => {
+                    // Release any handle held from a previous session before
+                    // reopening — a reconnect may target a different port, and
+                    // we must not leak the old one.
+                    robot.disconnect();
                     match robot.connect(&port, baud_rate) {
                         Ok(()) => set_status(&ui, "Connected".into(), Some(true)),
                         Err(e) => set_status(
